@@ -2,78 +2,86 @@
 
 #include "osctypes.hpp"
 
-namespace osc{
-double g                =   9.80665;
-int h_f                 =   283000;         //final height of ASAT-M
-int t_f                 =   168;            //time to reach final height
-int V_f                 =   3400;           //final velocity of ASAT-M
-int Mo                  =   19000;          //initial mass of ASAT-M
-double Lambda           =   19/(19-16.7);   //Payload fraction values 
-int Isp                 =   280;            //standard value for solid fuel motor
-double ModelAccuracy    =   0.001;          //modelling value
-double mu               =   3.986012e14;    //keeping large values to avoid
-int EarthRadius         =   6371000;        //unit changing mid-model
-int AltAtmosphere       =   84852+EarthRadius;
+namespace osc
+{
+    constexpr const double g = 9.80665;
+    constexpr const int h_f = 283000;                 // final height of ASAT-M
+    constexpr const int t_f = 168;                    // time to reach final height
+    constexpr const int V_f = 3400;                   // final velocity of ASAT-M
+    constexpr const int Mo = 19000;                   // initial mass of ASAT-M
+    constexpr const double Lambda = 19 / (19 - 16.7); // Payload fraction values
+    constexpr const int Isp = 280;                    // standard value for solid fuel motor
+    constexpr const double ModelAccuracy = 0.001;     // modelling value
+    constexpr const double mu = 3.986012e14;          // keeping large values to avoid
+    constexpr const int EarthRadius = 6371000;        // unit changing mid-model
+    constexpr const int AltAtmosphere = 84852 + EarthRadius;
 
-//needs to create a KOE object with these parameters
-    // Sat_Alt=250000; Sat_Ecc=0;      Sat_Inc=0;
-    // Sat_RAAN=0;     Sat_ArgPer=0;   Sat_MeaAno=0;
-    // Sat_SMA=EarthRadius+Sat_Alt;
-    // SatKOE=[Sat_SMA Sat_Ecc Sat_Inc Sat_RAAN Sat_ArgPer Sat_MeaAno];
+    // needs to create a KOE object with these parameters
+    //  Sat_Alt=250000; Sat_Ecc=0;      Sat_Inc=0;
+    //  Sat_RAAN=0;     Sat_ArgPer=0;   Sat_MeaAno=0;
+    //  Sat_SMA=EarthRadius+Sat_Alt;
+    //  SatKOE=[Sat_SMA Sat_Ecc Sat_Inc Sat_RAAN Sat_ArgPer Sat_MeaAno];
 
-//defender satellite initial keplerian orbital elements
-    // CaSat_Alt_i=250000; CaSat_Ecc_i=0;      CaSat_Inc_i=0;
-    // CaSat_RAAN_i=0;     CaSat_ArgPer_i=0;   CaSat_MeaAno_i=0;
-    // CaSat_SMA_i=EarthRadius+CaSat_Alt_i;
-    // CaSatKOEi=[CaSat_SMA_i CaSat_Ecc_i CaSat_Inc_i CaSat_RAAN_i CaSat_ArgPer_i CaSat_MeaAno_i];
+    constexpr const double sat_ecc = 0;
+    constexpr const double sat_inc = 0;
+    constexpr const double sat_RAAN = 0;
+    constexpr const double sat_ArgPer = 0;
+    constexpr const double sat_MeanAno = 0;
+    constexpr const double sat_alt = 250000;
+    constexpr const double semi_maj_ax = sat_alt + EarthRadius;
 
-//ASAT-M Model Values
-double mo=((Mo/exp(((V_f/g)+t_f)/280))-Mo)/(-t_f);     //fuel mass flow Rate
-double p_f=1-((Mo-mo*t_f)/Mo)*(log(Mo/(Mo-mo*t_f))+1); //range function p(f)
-double TWR=(g*pow2(Isp)*p_f)/(h_f+0.5*g*pow2(t_f));            //thrust to weight Ratio
+    // defender satellite initial keplerian orbital elements
+    //  CaSat_Alt_i=250000; CaSat_Ecc_i=0;      CaSat_Inc_i=0;
+    //  CaSat_RAAN_i=0;     CaSat_ArgPer_i=0;   CaSat_MeaAno_i=0;
+    //  CaSat_SMA_i=EarthRadius+CaSat_Alt_i;
+    //  CaSatKOEi=[CaSat_SMA_i CaSat_Ecc_i CaSat_Inc_i CaSat_RAAN_i CaSat_ArgPer_i CaSat_MeaAno_i];
 
-//ASAT-M Modelling with time
-//t=ModelAccuracy:ModelAccuracy:t_f;              //sets up matrix for all times
-int t;
- 
-double p=1-((Mo-mo*t)/Mo)*(log(Mo/(Mo-mo*t))+1);  //range function p(f) again
-double h=((g*pow2(Isp)/TWR)*p-(0.5*g*pow2(t)));              //altitude as function of time
-double V=g*(Isp*log(Mo/(Mo-mo*t))+1);                 //velocity as function of time
-double h_c=h+(pow2(V))/(2*g);      //culmination alt as func of time
+    // ASAT-M Model Values
+    double mo = ((Mo / std::exp(((V_f / g) + t_f) / 280)) - Mo) / (-t_f);      // fuel mass flow Rate
+    double p_f = 1 - ((Mo - mo * t_f) / Mo) * (log(Mo / (Mo - mo * t_f)) + 1); // range function p(f)
+    double TWR = (g * pow2(Isp) * p_f) / (h_f + 0.5 * g * pow2(t_f));          // thrust to weight Ratio
 
-//for t_burnout=t_f+ModelAccuracy:ModelAccuracy:1000 //gives height values after motor burnout
-double t_burnout;
-//double h = h(t_f/ModelAccuracy)+V(t_f/ModelAccuracy)*(t_burnout-t_f)-(g/2*(t_burnout-t_f));//altitude after burnout
+    // ASAT-M Modelling with time
+    // t=ModelAccuracy:ModelAccuracy:t_f;              //sets up matrix for all times
+    int t; // loop
 
+    double p = 1 - ((Mo - mo * t) / Mo) * (log(Mo / (Mo - mo * t)) + 1); // range function p(f) again
+    double h = ((g * pow2(Isp) / TWR) * p - (0.5 * g * pow2(t)));        // altitude as function of time
+    double V = g * (Isp * log(Mo / (Mo - mo * t)) + 1);                  // velocity as function of time
+    double h_c = h + (pow2(V)) / (2 * g);                                // culmination alt as func of time
+                                                                         // HRCT = find(h>Sat_Alt, 1);                      //first time index where ASAT-M is at target satellite
+    // LRCT = (find(h_c>100000, 1)-1);                 //first time index where culmination height is above 100km
 
-//HRCT = find(h>Sat_Alt, 1);                      //first time index where ASAT-M is at target satellite
-//LRCT = (find(h_c>100000, 1)-1);                 //first time index where culmination height is above 100km
-//ASAT_AltAtLRCT=h(LRCT);                         //Altitude of ASAT-M at Low Risk Critical Time
+    // for t_burnout=t_f+ModelAccuracy:ModelAccuracy:1000 //gives height values after motor burnout
+    double t_burnout;
+    // double h = h(t_f/ModelAccuracy)+V(t_f/ModelAccuracy)*(t_burnout-t_f)-(g/2*(t_burnout-t_f));//altitude after burnout
+
+    // ASAT_AltAtLRCT=h(LRCT);                         //Altitude of ASAT-M at Low Risk Critical Time
 }
 
-//get ASAT positions and velocities from following equations
-//deltaM = (ASATflightTime - ReactionTime)*MeanOrbitalMotion(SatKOE)
-//deltaE = MeanToTrue(deltaM, SatKOE)
-//ASATp = [0, deltaE, h]
-//ASATv = [V*cos(deltaE), V*sin(deltaE), 0]
+// get ASAT positions and velocities from following equations
+// deltaM = (ASATflightTime - ReactionTime)*MeanOrbitalMotion(SatKOE)
+// deltaE = MeanToTrue(deltaM, SatKOE)
+// ASATp = [0, deltaE, h]
+// ASATv = [V*cos(deltaE), V*sin(deltaE), 0]
 
-//set up big fucking nasty array
-//every combination between two orthogonal sets of deltaVs
+// set up big fucking nasty array
+// every combination between two orthogonal sets of deltaVs
 
-//set up bigger fucking nastier array
-//BFNA by 13 array
+// set up bigger fucking nastier array
+// BFNA by 13 array
 
-//for each combination
-    //perform burn of combination deltaV (Burn)
-    //find intercept values (InterceptCalcs)
-    //find if intercept is exo/endo atmospheric and viable
-        //some vile fucking logic here
-        //save any viable intercepts, ignore the rest
+// for each combination
+// perform burn of combination deltaV (Burn)
+// find intercept values (InterceptCalcs)
+// find if intercept is exo/endo atmospheric and viable
+// some vile fucking logic here
+// save any viable intercepts, ignore the rest
 
-//find lowest deltaV burn for both exo and atmo
+// find lowest deltaV burn for both exo and atmo
 
-//do SMAD calculations for Casat
-//plot graphs
+// do SMAD calculations for Casat
+// plot graphs
 
 // function [CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept] = InterceptCalcs(KOE)
 //     global deltaM mu EarthRadius ModelAccuracy ReactionTime h
@@ -100,32 +108,35 @@ double t_burnout;
 //     CaSatInterceptTime=abs(integral(Function, deg2rad(KOE(6)), deg2rad(KOE(6)+dTheta)))/(mu^2/AngularMomentum^3);
 //     CaSatAltAtTheta=norm(r)-EarthRadius;
 //     if ReactionTime/ModelAccuracy+(round(CaSatInterceptTime/ModelAccuracy))<=1000000
-//         ASAT_AltAtIntercept=h(ReactionTime/ModelAccuracy+(round(CaSatInterceptTime/ModelAccuracy)));   
+//         ASAT_AltAtIntercept=h(ReactionTime/ModelAccuracy+(round(CaSatInterceptTime/ModelAccuracy)));
 //     else
 //         ASAT_AltAtIntercept=10^9;
 //     end
-    
+
 // end
 
-function KOE = Burn(DeltaVvnb, KOE)%burns by a [dVr dVt dVn]m/s impulse burn
-    if KOE(2)==0
-        [r, t] = keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6), 'truelon', KOE(6));
-    else
-        [r, t] = keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6), 'lonper', KOE(6));
-    end
-    vnb2ijk=[t./norm(t) cross(r,t)./norm(cross(r,t)) cross(t,cross(r,t))./norm(cross(t,cross(r,t)))];
-    DeltaVijk=vnb2ijk*DeltaVvnb';
-    t=t+DeltaVijk;
-    [KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6), trulon]=ijk2keplerian(r, t);
-    if ~isfinite(KOE(6))==1
-        KOE(6)=trulon;
-    end
-    if ~isfinite(KOE(4))==1 || ~isfinite(KOE(5))==1
-    KOE(4)=0; KOE(5)=0;
-    end
-end
+// function KOE = Burn(DeltaVvnb, KOE) % burns by a[dVr dVt dVn] m / s impulse burn if KOE (2) == 0
+//[r, t] = keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6), 'truelon', KOE(6));
+// else
+//     [r, t] = keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6), 'lonper', KOE(6));
+// end
+//     vnb2ijk = [t./ norm(t) cross(r, t)./ norm(cross(r, t)) cross(t, cross(r, t))./ norm(cross(t, cross(r, t)))];
+// DeltaVijk = vnb2ijk * DeltaVvnb'; t = t + DeltaVijk;
+//                           [KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6), trulon] = ijk2keplerian(r, t);
+// if
+//     ~isfinite(KOE(6)) == 1 KOE(6) = trulon;
+// end if ~isfinite(KOE(4)) == 1 || ~isfinite(KOE(5)) == 1 KOE(4) = 0;
+// KOE(5) = 0;
+// end
+//     end
 
-function n = MeanOrbitalMotion(KOE)
-global mu
-    n = rad2deg(sqrt(mu/(KOE(1))^3));
-end
+//         function n = MeanOrbitalMotion(KOE)
+//             global mu
+//                 n = rad2deg(sqrt(mu / pow3(KOE(1))));
+// end
+
+int main(int, char **)
+{
+
+    using namespace osc;
+}
