@@ -3,6 +3,7 @@
 #include <string>
 
 #include "osctypes.hpp"
+#include "orbitalmechanics/axistransforms.hpp"
 
 
 // get ASAT positions and velocities from following equations
@@ -80,46 +81,71 @@
 //             global mu
 //                 n = rad2deg(sqrt(mu / pow3(KOE(1))));
 // end
+        // needs to create a KOE object with these parameters
+    //  Sat_Alt=250000; Sat_Ecc=0;      Sat_Inc=0;
+    //  Sat_RAAN=0;     Sat_ArgPer=0;   Sat_MeaAno=0;
+    //  Sat_SMA=EarthRadius+Sat_Alt;
+    //  SatKOE=[Sat_SMA Sat_Ecc Sat_Inc Sat_RAAN Sat_ArgPer Sat_MeaAno];
+
+    // constexpr const double sat_ecc = 0;
+    // constexpr const double sat_inc = 0;
+    // constexpr const double sat_RAAN = 0;
+    // constexpr const double sat_ArgPer = 0;
+    // constexpr const double sat_MeanAno = 0;
+    // constexpr const double sat_alt = 250000;
+    // constexpr const double semi_maj_ax = sat_alt + EarthRadius;
+
+    //can i get away with doing this?
+
+osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE){
+    using namespace osc;
+    vnb dV;
+    dV.vVNB = {v, n, b};
+
+    pcs PCSposvel = KOEtoPCS(KOE);
+    eci ECIposvel = PCStoECI(KOE, PCSposvel);
+    eci iECI = VNBtoECI(ECIposvel, dV);
+    orbParam iKOE = ECItoKOE(iECI);
+    return iKOE;
+}
+
+osc::vec3 InterceptCalcs(double deltaM, osc::orbParam KOE){
+    using namespace osc;
+    double dTheta = KOE.meanToTrue(deltaM);
+    if (KOE.truAnom+dTheta>=2 * M_PI){dTheta=dTheta-2 * M_PI;}
+
+    pcs PCSposvel = KOEtoPCS(KOE);
+    eci ECIposvel = PCStoECI(KOE, PCSposvel);
+
+    //i cannot remember why i added this
+    if (KOE.truAnom>7*M_PI_4 && KOE.truAnom+dTheta<M_PI_4){dTheta=dTheta+2*M_PI;}
+
+    vec3 h = ECIposvel.rIJK.cross(ECIposvel.vIJK);//angular momentum
+    double h_abs = h.mag();
+
+    double CaSatInterceptTime = KOE.RK4(dTheta, 0.001)/(pow2(mu)/pow3(h_abs));
+    double CaSatAltAtTheta = ECIposvel.rIJK.mag()-EarthRadius;
+    double ASAT_AltAtIntercept; //needs to read that .csv file from before
+    return {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept};
+}
 
 int main(int, char **)
 {
+
+
 
     using namespace std;
     ofstream outputFile;
     outputFile.open("AsatM_Out.csv");
 
     using namespace osc;
-
-    constexpr const double g = 9.80665;
-    constexpr const int h_f = 283000;                 // final height of ASAT-M
-    constexpr const int t_f = 168;                    // time to reach final height
-    constexpr const int V_f = 3400;                   // final velocity of ASAT-M
-    constexpr const int Mo = 19000;                   // initial mass of ASAT-M
-    constexpr const double Lambda = 19 / (19 - 16.7); // Payload fraction values
-    constexpr const int Isp = 280;                    // standard value for solid fuel motor
-    constexpr const double ModelAccuracy = 0.001;     // modelling value
-    constexpr const double mu = 3.986012e14;          // keeping large values to avoid
-    constexpr const int EarthRadius = 6371000;        // unit changing mid-model
-    constexpr const int AltAtmosphere = 84852 + EarthRadius;
-
-
-    // needs to create a KOE object with these parameters
-    //  Sat_Alt=250000; Sat_Ecc=0;      Sat_Inc=0;
-    //  Sat_RAAN=0;     Sat_ArgPer=0;   Sat_MeaAno=0;
-    //  Sat_SMA=EarthRadius+Sat_Alt;
-    //  SatKOE=[Sat_SMA Sat_Ecc Sat_Inc Sat_RAAN Sat_ArgPer Sat_MeaAno];
-
-    constexpr const double sat_ecc = 0;
-    constexpr const double sat_inc = 0;
-    constexpr const double sat_RAAN = 0;
-    constexpr const double sat_ArgPer = 0;
-    constexpr const double sat_MeanAno = 0;
-    constexpr const double sat_alt = 250000;
-    constexpr const double semi_maj_ax = sat_alt + EarthRadius;
-
-    //can i get away with doing this?
+    int LRCT;
+    int HRCT;
+    double ASATAltAtLRCT;
     struct orbParam SatKOE = {250000+EarthRadius, 0, 0, 0, 0, 0};
     struct orbParam CaSatKOE = {250000+EarthRadius, 0, 0, 0, 0, 0};
+    double deltaM = (t_f-ReactionTime)*SatKOE.MeanOrbitalMotion();
+    double deltaE = SatKOE.meanToTrue(SatKOE.ecc);
 
     // defender satellite initial keplerian orbital elements
     //  CaSat_Alt_i=250000; CaSat_Ecc_i=0;      CaSat_Inc_i=0;
@@ -141,12 +167,26 @@ int main(int, char **)
     double V = g * (Isp * log(Mo / (Mo - mo * t)) + 1);                  // velocity as function of time
     double h_c = h + (pow2(V)) / (2 * g);                                // culmination alt as func of time
     if (h_c>100000){
-        int LRCT=t;
-        double ASATAltAtLRCT=h;};
-    if (h>(SatKOE.sma-EarthRadius)){int HRCT=t;};
+        LRCT=t;
+        ASATAltAtLRCT=h;};
+    if (h>(SatKOE.sma-EarthRadius)){HRCT=t;};
 
-    outputFile << h << "," << V <<"," <<  h_c << std::endl;
+    lla LLApos = {0, deltaE, h};
+    ecef asatECEF = LLAtoECEF(LLApos);
+    asatECEF.vXYZ = {V*cos(deltaE), V*sin(deltaE), 0};
+
+    outputFile << h << "," << V << "," <<  h_c << "," << asatECEF.rXYZ[0] << "," << asatECEF.rXYZ[1] << "," << asatECEF.rXYZ[2] << "," <<  asatECEF.vXYZ[0] << "," << asatECEF.vXYZ[1] << "," << asatECEF.vXYZ[2] << std::endl;
 
    }
    outputFile.close();
+
+    outputFile.open("CaSatM_Out.csv");
+    for (double dVv = -150; dVv<=-50; dVv+=1){
+        for (double dVb = -1250; dVb<=-250; dVb+=1){
+            orbParam iKOE = Burn(dVv, 0, dVb, SatKOE);
+            vec3 InterceptOut = InterceptCalcs(deltaM, SatKOE);
+            outputFile << dVv << "," << dVb << "," <<  sqrt(pow2(dVv)+pow2(dVb)) << "," << iKOE.sma << "," << iKOE.ecc << "," << iKOE.inc << "," <<  iKOE.aop << "," << iKOE.asc << "," << iKOE.truAnom << "," << InterceptOut[0] << InterceptOut[1]/1000 << InterceptOut[2]/1000 << std::endl;
+        }
+        std::cout << dVv; //debug
+    };
 }

@@ -5,7 +5,6 @@
 #include "../osctypes.hpp"
 #include "planet.hpp"
 #include "axistransforms.hpp"
-#include "../control/task.hpp"
 
 namespace osc {
 

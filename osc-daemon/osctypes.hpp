@@ -7,6 +7,20 @@
 
 namespace osc {
 
+    constexpr const double g = 9.80665;
+    constexpr const int h_f = 283000;                 // final height of ASAT-M
+    constexpr const int t_f = 168;                    // time to reach final height
+    constexpr const int V_f = 3400;                   // final velocity of ASAT-M
+    constexpr const int Mo = 19000;                   // initial mass of ASAT-M
+    constexpr const double Lambda = 19 / (19 - 16.7); // Payload fraction values
+    constexpr const int Isp = 280;                    // standard value for solid fuel motor
+    constexpr const double ModelAccuracy = 0.001;     // modelling value
+    constexpr const double mu = 3.986012e14;          // keeping large values to avoid
+    constexpr const int EarthRadius = 6371000;        // unit changing mid-model
+    constexpr const int AltAtmosphere = 84852 + EarthRadius;
+    constexpr const int ReactionTime = 20;
+
+
     // Inline helper functions
     /// Inline function to square an argument
     inline double pow2(double arg) { return arg * arg; }
@@ -14,7 +28,8 @@ namespace osc {
     /// Inline function to cube an argument
     inline double pow3(double arg) { return arg * arg * arg; }
 
-
+    inline double deg2rad(double arg) { return arg * M_PI / 180; }
+    inline double rad2deg(double arg) { return arg / M_PI * 180; }
 
     // Common data types
     /** \struct vec3
@@ -434,7 +449,7 @@ namespace osc {
         @param[in] meanAnomaly input mean anomaly
         Converts mean anomaly to true anomaly
         */
-        void meanToTrue(double meanAnomaly) {
+        double meanToTrue(double meanAnomaly) {
             // converts mean anomaly to true anomaly, used for calculating positions at different times
             if (ecc < 0.2) { //this is a handy calculation to save time for small eccentricities
                 truAnom = meanAnomaly + 2 * ecc * sin(meanAnomaly) 
@@ -453,6 +468,7 @@ namespace osc {
 
             truAnom = atan2(sqrt(1 - pow2(ecc) * sin(ecc)), cos(EccAnomaly) - ecc);
             };
+            return truAnom;
         };
 
         /** \fn trueToMean()
@@ -467,6 +483,35 @@ namespace osc {
 
             return meanAnomaly;
         };
+
+        double MeanOrbitalMotion(){
+            return sqrt(mu/pow3(sma));//unfuck this later when you learn how to code not like an ape
+        }
+
+        double ArcTime(double Theta){
+            return 1/pow2(1+ecc*cos(Theta));
+        }
+
+        double ArcTimeDerivative(double Theta){
+            return (2*ecc*sin(Theta))/pow3(ecc*cos(Theta)+1);
+        }
+
+        double RK4(double dTheta, int stepSize){
+            double k1, k2, k3, k4, y0, y1, y2, y3, y4, yn, tn, y;
+            y0=ArcTime(truAnom);
+            for(double x = truAnom; x <= truAnom+dTheta; x+=stepSize){
+                k1=ArcTimeDerivative(x);
+                y1=y0+k1*stepSize/2;
+                k2=ArcTimeDerivative(x+stepSize/2);
+                y2=y0+k2*stepSize/2;
+                k3=ArcTime(x+stepSize/2);
+                y3=y0+k3*stepSize;
+                k4=ArcTime(x+stepSize);
+                yn=y0+stepSize*(k1+2*k2+2*k3+k4)/6;
+                y0=yn;
+            }
+            return yn;
+        }
 
     };
 
