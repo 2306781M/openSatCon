@@ -43,10 +43,12 @@ inline double greenwichSiderealAngle() { //working
     */
 inline ecef LLAtoECEF(lla posLLA) {
     ecef posECEF;
-    double normalDistance = planet.sMa / sqrt(1 - pow2(planet.ecc * sin(posLLA.lat)));
+    double normalDistance = planet.sMa / sqrt(1 - pow2(planet.ecc) * pow2(sin(posLLA.lat)));
+    
 
-    posECEF.rXYZ.data[0] = (normalDistance + posLLA.alt) * cos(posLLA.lon) * cos(posLLA.lat);
-    posECEF.rXYZ.data[1] = (normalDistance + posLLA.alt) * sin(posLLA.lon) * cos(posLLA.lat);
+    posECEF.rXYZ.data[0] = (normalDistance + posLLA.alt) * cos(posLLA.lat) * cos(posLLA.lon);
+    //std::cout << posLLA.lon << std::endl;
+    posECEF.rXYZ.data[1] = (normalDistance + posLLA.alt) * cos(posLLA.lat) * sin(posLLA.lon);
     posECEF.rXYZ.data[2] = (normalDistance * (1 - pow2(planet.ecc)) + posLLA.alt) * sin(posLLA.lat);
 
     return posECEF;
@@ -311,30 +313,24 @@ inline eci PCStoECI(orbParam KOE, pcs posvelPCS) {
     eci posvelECI;
 
         posvelECI.rIJK.data[0] = (cos(KOE.aop) * cos(KOE.asc) - sin(KOE.asc) * sin(KOE.aop) * cos(KOE.inc))   * posvelPCS.rPCS.data[0]
-                                 +(-cos(KOE.asc) * sin(KOE.aop) - sin(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.rPCS.data[1]
-                                 +(sin(KOE.asc) * sin(KOE.inc))                                               * posvelPCS.rPCS.data[2];
+                                 -(cos(KOE.asc) * sin(KOE.aop) + sin(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.rPCS.data[1];
 
         posvelECI.rIJK.data[1] = (sin(KOE.asc) * cos(KOE.aop) + cos(KOE.asc) * sin(KOE.aop) * cos(KOE.inc))   * posvelPCS.rPCS.data[0]
-                                 +(-sin(KOE.asc) * sin(KOE.aop) + cos(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.rPCS.data[1]
-                                 +(-cos(KOE.asc) * sin(KOE.inc))                                              * posvelPCS.rPCS.data[2];
+                                 +(-sin(KOE.asc) * sin(KOE.aop) + cos(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.rPCS.data[1];
 
-    posvelECI.rIJK.data[2] = sin(KOE.aop) * sin(KOE.inc)                                                  * posvelPCS.rPCS.data[0]
-                                +cos(KOE.aop) * sin(KOE.inc)                                                 * posvelPCS.rPCS.data[1]
-                                +cos(KOE.inc)                                                                * posvelPCS.rPCS.data[2];
+        posvelECI.rIJK.data[2] = sin(KOE.aop) * sin(KOE.inc)                                                  * posvelPCS.rPCS.data[0]
+                                +cos(KOE.aop) * sin(KOE.inc)                                                 * posvelPCS.rPCS.data[1];
 
 
 
-        posvelECI.vIJK.data[0] = (cos(KOE.aop) * cos(KOE.asc) - sin(KOE.asc) * sin(KOE.aop) * cos(KOE.inc))   * posvelPCS.vPCS.data[0]
-                                 +(-cos(KOE.asc) * sin(KOE.aop) - sin(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.vPCS.data[1]
-                                 +(sin(KOE.asc) * sin(KOE.inc))                                               * posvelPCS.vPCS.data[2];
+        posvelECI.vIJK.data[0] = (cos(KOE.aop) * cos(KOE.asc) - sin(KOE.asc) * sin(KOE.aop) * cos(KOE.inc))  * posvelPCS.vPCS.data[0]
+                                 -(cos(KOE.asc) * sin(KOE.aop) + sin(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.vPCS.data[1];
 
         posvelECI.vIJK.data[1] = (sin(KOE.asc) * cos(KOE.aop) + cos(KOE.asc) * sin(KOE.aop) * cos(KOE.inc))   * posvelPCS.vPCS.data[0]
-                                 +(-sin(KOE.asc) * sin(KOE.aop) + cos(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.vPCS.data[1]
-                                 +(-cos(KOE.asc) * sin(KOE.inc))                                              * posvelPCS.vPCS.data[2];
+                                 +(-sin(KOE.asc) * sin(KOE.aop) + cos(KOE.asc) * cos(KOE.aop) * cos(KOE.inc)) * posvelPCS.vPCS.data[1];
 
     posvelECI.vIJK.data[2] = sin(KOE.aop) * sin(KOE.inc)                                                  * posvelPCS.vPCS.data[0]
-                                +cos(KOE.aop) * sin(KOE.inc)                                                 * posvelPCS.vPCS.data[1]
-                                +cos(KOE.inc)                                                                * posvelPCS.vPCS.data[2];
+                                +cos(KOE.aop) * sin(KOE.inc)                                                 * posvelPCS.vPCS.data[1];
 
     return posvelECI;
 };
@@ -378,15 +374,20 @@ inline orbParam ECItoKOE(eci posvelECI) {
     eci e;                           // eccentricity vector
     double r = posvelECI.rIJK.mag(); // orbital radius
     double v = posvelECI.vIJK.mag(); // orbital velocity
+    
 
     h.rIJK = posvelECI.rIJK.cross(posvelECI.vIJK);
+    //std::cout << h.rIJK[0] << ",    " << h.rIJK[1] << ",    " << h.rIJK[2] << ",    " <<std::endl;
 
     double normH=h.rIJK.mag();
 
     KOE.inc = acos(h.rIJK.data[2] / normH);
+    //std::cout<<KOE.inc<<std::endl;
 
     N.rIJK.data[0] = -h.rIJK.data[1];
     N.rIJK.data[1] = h.rIJK.data[0];
+    N.rIJK.data[2] = 0;
+    //std::cout << N.rIJK[0] << ",    " << N.rIJK[1] << ",    " << N.rIJK[2] << ",    " <<std::endl;
 
     double normN = N.rIJK.mag();
     KOE.asc = acos(N.rIJK.data[0] / normN);
@@ -395,6 +396,7 @@ inline orbParam ECItoKOE(eci posvelECI) {
     if (N.rIJK.data[1] < 0) {
         KOE.asc = 2 * M_PI - KOE.asc;
     };
+    if (isnan(KOE.asc)){KOE.asc=0;}
 
     double vSquaredMinusMuOverR = (pow2(v) - (planet.sgp / r));
     eci vSquaredMinusMuOverRtimesR, rDotVtimesV, vSquaredMinusMuOverRtimesRminusrDotVtimesV; //fix this horror
@@ -406,10 +408,19 @@ inline orbParam ECItoKOE(eci posvelECI) {
     vSquaredMinusMuOverRtimesRminusrDotVtimesV.rIJK = vSquaredMinusMuOverRtimesR.rIJK.operator-(rDotVtimesV.rIJK);
 
     e.rIJK                                          = vSquaredMinusMuOverRtimesRminusrDotVtimesV.rIJK.operator/(planet.sgp);
-
+    //std::cout << e.rIJK[0] << ",    " << e.rIJK[1] << ",    " << e.rIJK[2] << ",    " <<std::endl;
     KOE.ecc = e.rIJK.mag();
     KOE.sma = (pow2(normH) / planet.sgp) / (1 - pow2(KOE.ecc));
     KOE.aop = acos((N.rIJK.dot(e.rIJK) / (normN * KOE.ecc)));
+    if (e.rIJK[2]<0){KOE.aop=2*M_PI-KOE.aop;}
+    else if (KOE.asc==0){
+        KOE.aop=atan2(e.rIJK[1],e.rIJK[0]);
+        if (h.rIJK[2]<0){
+        KOE.aop=2*M_PI-KOE.aop;
+        }
+
+    }
+    //std::cout<<KOE.aop<<std::endl;
 
     if(e.rIJK.data[2] < 0) {
         KOE.aop = 2 * M_PI - KOE.aop;
@@ -482,6 +493,7 @@ inline eci VNBtoECI(eci posvelECI, vnb VNBdV) {
     absv     = posvelECI.vIJK.mag();
     absrxv   = rxv.rIJK.mag();
     absvxrxv = vxrxv.rIJK.mag();
+    
 
         ECIdV.vIJK.data[0] = (posvelECI.vIJK.data[0] / absv)  * VNBdV.vVNB.data[0]
                              +(rxv.rIJK.data[0] / absrxv)     * VNBdV.vVNB.data[1]
@@ -494,6 +506,7 @@ inline eci VNBtoECI(eci posvelECI, vnb VNBdV) {
         ECIdV.vIJK.data[2] = (posvelECI.vIJK.data[2] / absv)  * VNBdV.vVNB.data[0]
                              +(rxv.rIJK.data[2] / absrxv)     * VNBdV.vVNB.data[1]
                              +(vxrxv.rIJK.data[2] / absvxrxv) * VNBdV.vVNB.data[2];
+
 
     return ECIdV;
 };

@@ -102,9 +102,14 @@ osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE){
     vnb dV;
     dV.vVNB = {v, n, b};
 
+    //this doesnt need to be done every time, nothing actually changes until ECIdV
     pcs PCSposvel = KOEtoPCS(KOE);
     eci ECIposvel = PCStoECI(KOE, PCSposvel);
-    eci iECI = VNBtoECI(ECIposvel, dV);
+    eci ECIdV = VNBtoECI(ECIposvel, dV);
+    //std::cout << dV.vVNB[0] << ",    "<< dV.vVNB[1] << ",    "<< dV.vVNB[2] << ",    "<<std::endl;
+    eci iECI;
+    iECI.rIJK = ECIposvel.rIJK;
+    iECI.vIJK  = ECIposvel.vIJK.operator+(ECIdV.vIJK);
     orbParam iKOE = ECItoKOE(iECI);
     return iKOE;
 }
@@ -114,38 +119,42 @@ osc::vec3 InterceptCalcs(double deltaM, osc::orbParam KOE){
     double dTheta = KOE.meanToTrue(deltaM);
     if (KOE.truAnom+dTheta>=2 * M_PI){dTheta=dTheta-2 * M_PI;}
 
+    double oldTruAnom = KOE.truAnom;
+    KOE.truAnom=KOE.truAnom+dTheta;
     pcs PCSposvel = KOEtoPCS(KOE);
+    //std::cout << PCSposvel.rPCS[0] << ",   " << PCSposvel.rPCS[1] << ",   " << PCSposvel.rPCS[2] << std::endl;
     eci ECIposvel = PCStoECI(KOE, PCSposvel);
 
     //i cannot remember why i added this
-    if (KOE.truAnom>7*M_PI_4 && KOE.truAnom+dTheta<M_PI_4){dTheta=dTheta+2*M_PI;}
+    //if (oldTruAnom>7*M_PI_4 && KOE.truAnom<M_PI_4){dTheta=dTheta+2*M_PI;}
 
     vec3 h = ECIposvel.rIJK.cross(ECIposvel.vIJK);//angular momentum
     double h_abs = h.mag();
 
-    double CaSatInterceptTime = KOE.RK4(dTheta, 0.001)/(pow2(mu)/pow3(h_abs));
+    double dMean = KOE.trueToMean(KOE.truAnom);
+    
+    double CaSatInterceptTime = KOE.KeplersEqn(dMean);
     double CaSatAltAtTheta = ECIposvel.rIJK.mag()-EarthRadius;
+    std::cout << ECIposvel.rIJK[0] << ",    " << ECIposvel.rIJK[1] << ",    " << ECIposvel.rIJK[2] << ",    " <<ECIposvel.rIJK.mag() <<std::endl;
     double ASAT_AltAtIntercept; //needs to read that .csv file from before
     return {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept};
 }
 
 int main(int, char **)
 {
-
-
-
     using namespace std;
     ofstream outputFile;
-    outputFile.open("AsatM_Out.csv");
+    outputFile.open("AsatM_Out.csv", std::ofstream::trunc);
 
     using namespace osc;
-    int LRCT;
-    int HRCT;
+    double h;
+    double V;
+    double LRCT;
+    double HRCT;
+    double deltaM;
     double ASATAltAtLRCT;
     struct orbParam SatKOE = {250000+EarthRadius, 0, 0, 0, 0, 0};
     struct orbParam CaSatKOE = {250000+EarthRadius, 0, 0, 0, 0, 0};
-    double deltaM = (t_f-ReactionTime)*SatKOE.MeanOrbitalMotion();
-    double deltaE = SatKOE.meanToTrue(SatKOE.ecc);
 
     // defender satellite initial keplerian orbital elements
     //  CaSat_Alt_i=250000; CaSat_Ecc_i=0;      CaSat_Inc_i=0;
@@ -169,24 +178,35 @@ int main(int, char **)
     if (h_c>100000){
         LRCT=t;
         ASATAltAtLRCT=h;};
-    if (h>(SatKOE.sma-EarthRadius)){HRCT=t;};
+    if (h<=(SatKOE.sma-EarthRadius)){HRCT=t;};
 
-    lla LLApos = {0, deltaE, h};
-    ecef asatECEF = LLAtoECEF(LLApos);
-    asatECEF.vXYZ = {V*cos(deltaE), V*sin(deltaE), 0};
-
-    outputFile << h << "," << V << "," <<  h_c << "," << asatECEF.rXYZ[0] << "," << asatECEF.rXYZ[1] << "," << asatECEF.rXYZ[2] << "," <<  asatECEF.vXYZ[0] << "," << asatECEF.vXYZ[1] << "," << asatECEF.vXYZ[2] << std::endl;
-
+    outputFile << h << "," << V << "," <<  h_c  << std::endl;
    }
    outputFile.close();
+   
+   outputFile.open("CaSatMposVel_Out.csv", std::ofstream::trunc);
+    deltaM = (HRCT-ReactionTime)*SatKOE.MeanOrbitalMotion();
+    double deltaE = SatKOE.meanToTrue(deltaM);
+    SatKOE.truAnom=0;
+    // for (int i=0; i<0; i++){
+    //     lla LLApos = {0, deltaE, h};
+    //     ecef asatECEF = LLAtoECEF(LLApos);
+    //     //std::cout << LLApos.lat << "  ,   " << LLApos.lon << "  ,   " << LLApos.alt << std::endl;
+    //     //std::cout << asatECEF.rXYZ[0] << "  ,   " << asatECEF.rXYZ[1] << "  ,   " << asatECEF.rXYZ[2] << std::endl << std::endl;
+    //     asatECEF.vXYZ = {V*cos(deltaE), V*sin(deltaE), 0};
+    //     outputFile << asatECEF.rXYZ[0] << "," << asatECEF.rXYZ[1] << "," << asatECEF.rXYZ[2] << "," <<  asatECEF.vXYZ[0] << "," << asatECEF.vXYZ[1] << "," << asatECEF.vXYZ[2] << std::endl;
+    // }
+    outputFile.close();
+    
+   
 
-    outputFile.open("CaSatM_Out.csv");
-    for (double dVv = -150; dVv<=-50; dVv+=1){
-        for (double dVb = -1250; dVb<=-250; dVb+=1){
+    outputFile.open("CaSatM_Out.csv", std::ofstream::trunc);
+    for (double dVb = -350; dVb<=-50; dVb+=10){
+        for (double dVv = -1250; dVv<=-250; dVv+=10){
             orbParam iKOE = Burn(dVv, 0, dVb, SatKOE);
-            vec3 InterceptOut = InterceptCalcs(deltaM, SatKOE);
-            outputFile << dVv << "," << dVb << "," <<  sqrt(pow2(dVv)+pow2(dVb)) << "," << iKOE.sma << "," << iKOE.ecc << "," << iKOE.inc << "," <<  iKOE.aop << "," << iKOE.asc << "," << iKOE.truAnom << "," << InterceptOut[0] << InterceptOut[1]/1000 << InterceptOut[2]/1000 << std::endl;
+            vec3 InterceptOut = InterceptCalcs(deltaM, iKOE);
+            outputFile << dVv << "," << dVb << "," <<  sqrt(pow2(dVv)+pow2(dVb)) << "," << iKOE.sma << "," << iKOE.ecc << "," << iKOE.inc << "," <<  iKOE.aop << "," << iKOE.asc << "," << iKOE.truAnom << "," << InterceptOut[0] << "," <<InterceptOut[1]/1000 << "," << InterceptOut[2]/1000 << std::endl;
         }
-        std::cout << dVv; //debug
     };
+    std::cout << std::endl << "complete" << std::endl;
 }

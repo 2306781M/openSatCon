@@ -474,12 +474,12 @@ namespace osc {
         /** \fn trueToMean()
         converts the true anomaly to mean anomaly
         */
-        double trueToMean() {
+        double trueToMean(double deltaT) {
             double meanAnomaly;
-            double a = sqrt(1-pow2(ecc))*sin(truAnom);
-            double b = 1 + ecc*cos(truAnom);
+            double a = sqrt(1-pow2(ecc))*sin(deltaT);
+            double b = 1 + ecc*cos(deltaT);
 
-            meanAnomaly = atan2((a / b), ((ecc+cos(truAnom)) / b)) - ecc * (a / b);
+            meanAnomaly = atan2((a / b), ((ecc+cos(deltaT)) / b)) - ecc * (a / b);
 
             return meanAnomaly;
         };
@@ -496,7 +496,7 @@ namespace osc {
             return (2*ecc*sin(Theta))/pow3(ecc*cos(Theta)+1);
         }
 
-        double RK4(double dTheta, int stepSize){
+        double RK4(double dTheta, double stepSize){
             double k1, k2, k3, k4, y0, y1, y2, y3, y4, yn, tn, y;
             y0=ArcTime(truAnom);
             for(double x = truAnom; x <= truAnom+dTheta; x+=stepSize){
@@ -511,6 +511,11 @@ namespace osc {
                 y0=yn;
             }
             return yn;
+        }
+
+        double KeplersEqn(double dMean){
+            return dMean/sqrt(mu/pow3(sma));
+
         }
 
     };
@@ -607,10 +612,10 @@ namespace osc {
     Ground Sub-Vehicle Point on Earth's surface
     */
     struct lla {
-        /// @param lon geocentric longitude
-        double lon; 
-        /// @param lat geocentric latitude
+        /// @param lat geocentric longitude
         double lat; 
+        /// @param lon geocentric latitude
+        double lon; 
         /// @param alt height above WGS84 ellipsoid
         double alt; 
     };
