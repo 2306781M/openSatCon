@@ -271,7 +271,7 @@ struct quaternion {
     Information for conversion available at:
     https://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
     */
-    std::array<std::array<double, 3>, 3> result;
+    std::array<std::array<double, 3>, 3> result = {0, 0, 0, 0, 0, 0, 0, 0, 0};
     result[0] = {{1 - 2 * qy * qy - 2 * qz * qz, 2 * qx * qy - 2 * qz * qw,
                   2 * qx * qz + 2 * qy * qw}};
     result[1] = {{2 * qx * qy + 2 * qz * qw, 1 - 2 * qx * qx - 2 * qz * qz,
@@ -457,10 +457,10 @@ struct orbParam {
   double ecc;
   /// @param inc inclination (rad)
   double inc;
-  /// @param aop argument of periapsis (rad)
-  double aop;
-  /// @param asc longitude of the ascending node (rad)
+  /// @param asc argument of periapsis (rad)
   double asc;
+  /// @param aop longitude of the ascending node (rad)
+  double aop;
   // double meanAnom; // mean anomaly (rad)
   // double eccAnom; // eccentric anomaly (rad)
   /// @param truAnom true anomaly (rad)
@@ -471,41 +471,33 @@ struct orbParam {
   @param[in] meanAnomaly input mean anomaly
   Converts mean anomaly to true anomaly
   */
-  constexpr double meanToTrue(double meanAnomaly) noexcept {
+  double meanToTrue(double meanAnomaly){
     // converts mean anomaly to true anomaly, used for calculating positions at
     // different times
-    if (ecc < 0.2) { // this is a handy calculation to save time for small
-                     // eccentricities
-      truAnom = meanAnomaly + 2 * ecc * sin(meanAnomaly) +
-                1.25 * pow2(ecc) * sin(2 * meanAnomaly) -
-                pow3(ecc) * (0.25 * sin(meanAnomaly) -
-                             (13 / 12) * sin(3 * meanAnomaly));
-    }
-
-    else if (ecc < 1.0) { // newton raphson's method must be used for higher
+    double dTheta = 0;
+    if (ecc < 1.0) { // newton raphson's method must be used for higher
                           // eccentricities, e>1 is a parabolic orbit
-      double EccAnomaly =
-          meanAnomaly +
-          ((ecc * sin(meanAnomaly) /
-            (cos(ecc) - (M_PI_2 - ecc) * sin(ecc) + meanAnomaly * sin(ecc))));
-      double dE = EccAnomaly;
+
+      double Beta = ecc/(1+sqrt(1+pow2(ecc)));
+      double EccAnomaly = meanAnomaly + ((ecc * sin(meanAnomaly)) / ((cos(ecc) - ((M_PI_2 - ecc) * sin(ecc))) + meanAnomaly * sin(ecc)));
+      double dE = 10e10;
 
       while (abs(dE) > 10e-10) {
-        dE = (EccAnomaly - ecc * sin(EccAnomaly) - meanAnomaly) /
-             (1 - ecc * cos(EccAnomaly));
-        EccAnomaly = EccAnomaly - dE;
+        dE = (EccAnomaly - ecc * sin(EccAnomaly) - meanAnomaly) / (1 - ecc * cos(EccAnomaly));
+        EccAnomaly -= dE;
       };
 
-      truAnom = atan2(sqrt(1 - pow2(ecc) * sin(ecc)), cos(EccAnomaly) - ecc);
+      dTheta = atan2(sqrt(1-pow2(ecc))*sin(EccAnomaly), cos(EccAnomaly)-ecc);
     };
-    return truAnom;
+    
+    return dTheta;
   };
 
   /** \fn trueToMean()
   converts the true anomaly to mean anomaly
   */
   constexpr double trueToMean(double deltaT) noexcept {
-    double meanAnomaly;
+    double meanAnomaly = 0;
     double a = sqrt(1 - pow2(ecc)) * sin(deltaT);
     double b = 1 + ecc * cos(deltaT);
 
@@ -514,34 +506,50 @@ struct orbParam {
     return meanAnomaly;
   };
 
-  constexpr double MeanOrbitalMotion() const noexcept {
+  double MeanOrbitalMotion(){
     return sqrt(mu / pow3(sma)); // unfuck this later when you learn how to code
                                  // not like an ape
   }
 
-  constexpr double ArcTime(double Theta) const noexcept {
-    return 1 / pow2(1 + ecc * cos(Theta));
+  double ArcTimeCalc(double Theta){
+     return (1 / pow2(1 + ecc * cos(Theta)));
   }
 
-  constexpr double ArcTimeDerivative(double Theta) const noexcept {
-    return (2 * ecc * sin(Theta)) / pow3(ecc * cos(Theta) + 1);
-  }
+  // constexpr double RK4(double dTheta, double stepSize) noexcept {
+  //   double k1, k2, k3, k4, y0, y1, y2, y3, y4, yn, tn, y = 0;
+  //   y0 = ArcTime(truAnom);
+  //   for (double x = truAnom; x <= truAnom + dTheta; x += stepSize) {
+  //     k1 = ArcTimeDerivative(x);
+  //     y1 = y0 + k1 * stepSize / 2;
+  //     k2 = ArcTimeDerivative(x + stepSize / 2);
+  //     y2 = y0 + k2 * stepSize / 2;
+  //     k3 = ArcTime(x + stepSize / 2);
+  //     y3 = y0 + k3 * stepSize;
+  //     k4 = ArcTime(x + stepSize);
+  //     yn = y0 + stepSize * (k1 + 2 * k2 + 2 * k3 + k4) / 6;
+  //     y0 = yn;
+  //   }
+  //   return yn;
+  // }
 
-  constexpr double RK4(double dTheta, double stepSize) noexcept {
-    double k1, k2, k3, k4, y0, y1, y2, y3, y4, yn, tn, y;
-    y0 = ArcTime(truAnom);
-    for (double x = truAnom; x <= truAnom + dTheta; x += stepSize) {
-      k1 = ArcTimeDerivative(x);
-      y1 = y0 + k1 * stepSize / 2;
-      k2 = ArcTimeDerivative(x + stepSize / 2);
-      y2 = y0 + k2 * stepSize / 2;
-      k3 = ArcTime(x + stepSize / 2);
-      y3 = y0 + k3 * stepSize;
-      k4 = ArcTime(x + stepSize);
-      yn = y0 + stepSize * (k1 + 2 * k2 + 2 * k3 + k4) / 6;
-      y0 = yn;
+  double CompositeTrapezoid(double dTheta){//fucked somehow idk
+    double ArcTime;
+    double n = 10000; //subinterval count
+    double h = dTheta/n;
+    double f_a = ArcTimeCalc(truAnom)/2;
+    double f_b = ArcTimeCalc(truAnom+dTheta)/2;
+    double f_k=0;
+    for (int k=1; k<n; k++){
+      f_k+=ArcTimeCalc(truAnom+k*h);
     }
-    return yn;
+
+    ArcTime = h * (f_a + f_k + f_b)/(pow2(mu)/pow3(AngularMomentum()));
+    return ArcTime;
+  }
+
+  double AngularMomentum(){
+    double h = sqrt(mu*sma*(1-pow2(ecc)));
+    return h;
   }
 
   constexpr double KeplersEqn(double dMean) const noexcept {

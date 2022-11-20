@@ -5,105 +5,6 @@
 #include "orbitalmechanics/axistransforms.hpp"
 #include "osctypes.hpp"
 
-// get ASAT positions and velocities from following equations
-// deltaM = (ASATflightTime - ReactionTime)*MeanOrbitalMotion(SatKOE)
-// deltaE = MeanToTrue(deltaM, SatKOE)
-// ASATp = [0, deltaE, h]
-// ASATv = [V*cos(deltaE), V*sin(deltaE), 0]
-
-// set up big fucking nasty array
-// every combination between two orthogonal sets of deltaVs
-
-// set up bigger fucking nastier array
-// BFNA by 13 array
-
-// for each combination
-// perform burn of combination deltaV (Burn)
-// find intercept values (InterceptCalcs)
-// find if intercept is exo/endo atmospheric and viable
-// some vile fucking logic here
-// save any viable intercepts, ignore the rest
-
-// find lowest deltaV burn for both exo and atmo
-
-// do SMAD calculations for Casat
-// plot graphs
-
-// function [CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept] =
-// InterceptCalcs(KOE)
-//     global deltaM mu EarthRadius ModelAccuracy ReactionTime h
-//     %CASAT altitude equations
-//     [dTheta,~]=MeanToTrue(deltaM, KOE(2));
-//     if KOE(6)+dTheta>=360
-//        dTheta=dTheta-360;
-//     end
-//     Function=@(v) 1./(1+KOE(2).*cosd(v)).^2;
-//     if KOE(2)>0 && KOE(2)<1
-//     [r, V] = keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5),
-//     KOE(6)+dTheta, 'lonper', KOE(6)+dTheta); elseif KOE(2)==0 [r, V] =
-//     keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6)+dTheta,
-//     'truelon', KOE(6)+dTheta); else
-//         CaSatInterceptTime=99999999;
-//         CaSatAltAtTheta=999999999;
-//         ASAT_AltAtIntercept=99999999;
-//         return
-//     end
-//     AngularMomentum=norm(cross(r, V));
-//     if KOE(6)>315 && KOE(6)+dTheta<45
-//         dTheta=dTheta+360;
-//     end
-//     CaSatInterceptTime=abs(integral(Function, deg2rad(KOE(6)),
-//     deg2rad(KOE(6)+dTheta)))/(mu^2/AngularMomentum^3);
-//     CaSatAltAtTheta=norm(r)-EarthRadius;
-//     if
-//     ReactionTime/ModelAccuracy+(round(CaSatInterceptTime/ModelAccuracy))<=1000000
-//         ASAT_AltAtIntercept=h(ReactionTime/ModelAccuracy+(round(CaSatInterceptTime/ModelAccuracy)));
-//     else
-//         ASAT_AltAtIntercept=10^9;
-//     end
-
-// end
-
-// function KOE = Burn(DeltaVvnb, KOE) % burns by a[dVr dVt dVn] m / s impulse
-// burn if KOE (2) == 0
-//[r, t] = keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6),
-//'truelon', KOE(6));
-// else
-//     [r, t] = keplerian2ijk(KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6),
-//     'lonper', KOE(6));
-// end
-//     vnb2ijk = [t./ norm(t) cross(r, t)./ norm(cross(r, t)) cross(t, cross(r,
-//     t))./ norm(cross(t, cross(r, t)))];
-// DeltaVijk = vnb2ijk * DeltaVvnb'; t = t + DeltaVijk;
-//                           [KOE(1), KOE(2), KOE(3), KOE(4), KOE(5), KOE(6),
-//                           trulon] = ijk2keplerian(r, t);
-// if
-//     ~isfinite(KOE(6)) == 1 KOE(6) = trulon;
-// end if ~isfinite(KOE(4)) == 1 || ~isfinite(KOE(5)) == 1 KOE(4) = 0;f
-// KOE(5) = 0;
-// end
-//     end
-
-//         function n = MeanOrbitalMotion(KOE)
-//             global mu
-//                 n = rad2deg(sqrt(mu / pow3(KOE(1))));
-// end
-// needs to create a KOE object with these parameters
-//  Sat_Alt=250000; Sat_Ecc=0;      Sat_Inc=0;
-//  Sat_RAAN=0;     Sat_ArgPer=0;   Sat_MeaAno=0;
-//  Sat_SMA=EarthRadius+Sat_Alt;
-//  SatKOE=[Sat_SMA Sat_Ecc Sat_Inc Sat_RAAN Sat_ArgPer Sat_MeaAno];
-
-// constexpr const double sat_ecc = 0;
-// constexpr const double sat_inc = 0;
-// constexpr const double sat_RAAN = 0;
-// constexpr const double sat_ArgPer = 0;
-// constexpr const double sat_MeanAno = 0;
-// constexpr const double sat_alt = 250000;
-// constexpr const double semi_maj_ax = sat_alt + EarthRadius;
-
-// can i get away with doing this?
-
 osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE) {
   using namespace osc;
   vnb dV;
@@ -123,33 +24,20 @@ osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE) {
   return iKOE;
 }
 
-osc::vec3 InterceptCalcs(double deltaM, osc::orbParam &KOE) {
+osc::vec3 InterceptCalcs(double deltaM, osc::orbParam KOE) {
   using namespace osc;
   double dTheta = KOE.meanToTrue(deltaM);
-  if (KOE.truAnom + dTheta >= 2 * M_PI) {
-    dTheta = dTheta - 2 * M_PI;
-  }
-
-  double oldTruAnom = KOE.truAnom;
-  KOE.truAnom = KOE.truAnom + dTheta;
+  KOE.truAnom+=dTheta;
   pcs PCSposvel = KOEtoPCS(KOE);
   // std::cout << PCSposvel.rPCS[0] << ",   " << PCSposvel.rPCS[1] << ",   " <<
   // PCSposvel.rPCS[2] << std::endl;
   eci ECIposvel = PCStoECI(KOE, PCSposvel);
-
-  // i cannot remember why i added this
-  // if (oldTruAnom>7*M_PI_4 && KOE.truAnom<M_PI_4){dTheta=dTheta+2*M_PI;}
-
-  vec3 h = ECIposvel.rIJK.cross(ECIposvel.vIJK); // angular momentum
-  double h_abs = h.mag();
-
-  double dMean = KOE.trueToMean(KOE.truAnom);
-
-  double CaSatInterceptTime = KOE.KeplersEqn(dMean);
+  KOE.truAnom-=dTheta;
+  double CaSatInterceptTime = KOE.CompositeTrapezoid(dTheta);
   double CaSatAltAtTheta = ECIposvel.rIJK.mag() - EarthRadius;
-  std::cout << ECIposvel.rIJK[0] << ",    " << ECIposvel.rIJK[1] << ",    "
-            << ECIposvel.rIJK[2] << ",    " << ECIposvel.rIJK.mag()
-            << std::endl;
+  // std::cout << ECIposvel.rIJK[0] << ",    " << ECIposvel.rIJK[1] << ",    "
+  //           << ECIposvel.rIJK[2] << ",    " << ECIposvel.rIJK.mag()
+  //           << std::endl;
   double ASAT_AltAtIntercept; // needs to read that .csv file from before
   return {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept};
 }
@@ -211,7 +99,6 @@ int main(int, char **) {
   outputFile.open("CaSatMposVel_Out.csv", std::ofstream::trunc);
   deltaM = (HRCT - ReactionTime) * SatKOE.MeanOrbitalMotion();
   double deltaE = SatKOE.meanToTrue(deltaM);
-  SatKOE.truAnom = 0;
   // for (int i=0; i<0; i++){
   //     lla LLApos = {0, deltaE, h};
   //     ecef asatECEF = LLAtoECEF(LLApos);

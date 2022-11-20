@@ -374,63 +374,99 @@ inline orbParam ECItoKOE(eci posvelECI) {
     eci e;                           // eccentricity vector
     double r = posvelECI.rIJK.mag(); // orbital radius
     double v = posvelECI.vIJK.mag(); // orbital velocity
+    double rDotV = posvelECI.rIJK.dot(posvelECI.vIJK);
+
+     e.rIJK = posvelECI.rIJK.operator*((pow2(v)/mu)-(1/r))-posvelECI.vIJK.operator*(rDotV/mu); 
     
 
     h.rIJK = posvelECI.rIJK.cross(posvelECI.vIJK);
     //std::cout << h.rIJK[0] << ",    " << h.rIJK[1] << ",    " << h.rIJK[2] << ",    " <<std::endl;
 
-    double normH=h.rIJK.mag();
+    double AngularMomentum=h.rIJK.mag();
 
-    KOE.inc = acos(h.rIJK.data[2] / normH);
-    //std::cout<<KOE.inc<<std::endl;
+    double SpecificEnergy = (pow2(v)/2) - (mu/r);
 
-    N.rIJK.data[0] = -h.rIJK.data[1];
-    N.rIJK.data[1] = h.rIJK.data[0];
-    N.rIJK.data[2] = 0;
-    //std::cout << N.rIJK[0] << ",    " << N.rIJK[1] << ",    " << N.rIJK[2] << ",    " <<std::endl;
+    KOE.sma = -mu/(2*SpecificEnergy);
 
-    double normN = N.rIJK.mag();
-    KOE.asc = acos(N.rIJK.data[0] / normN);
-    //if Ny > 0 then 0<asc<180
-    //if Ny < 0 then 180<asc<360
-    if (N.rIJK.data[1] < 0) {
-        KOE.asc = 2 * M_PI - KOE.asc;
-    };
+    KOE.ecc = e.rIJK.mag();
+    
+    double p = KOE.sma * (1-pow2(KOE.ecc));
+
+    KOE.inc = acos(h.rIJK[2]/AngularMomentum);
+
+    KOE.asc = atan2(h.rIJK[0],-h.rIJK[1]);
+
     if (isnan(KOE.asc)){KOE.asc=0;}
 
-    double vSquaredMinusMuOverR = (pow2(v) - (planet.sgp / r));
-    eci vSquaredMinusMuOverRtimesR, rDotVtimesV, vSquaredMinusMuOverRtimesRminusrDotVtimesV; //fix this horror
-    double rDotV;
+    double ArgumentOfLatitude = atan2((posvelECI.rIJK[2]/sin(KOE.inc)),(posvelECI.rIJK[0]*KOE.asc+posvelECI.rIJK[1]*KOE.asc));
 
-    vSquaredMinusMuOverRtimesR.rIJK                 = posvelECI.rIJK.operator*(vSquaredMinusMuOverR);
-    rDotV                                           = posvelECI.rIJK.dot(posvelECI.vIJK);
-    rDotVtimesV.rIJK                                = posvelECI.vIJK.operator*(rDotV);
-    vSquaredMinusMuOverRtimesRminusrDotVtimesV.rIJK = vSquaredMinusMuOverRtimesR.rIJK.operator-(rDotVtimesV.rIJK);
+    KOE.truAnom = atan2(sqrt(p/mu)*rDotV,(p-r));
+    KOE.truAnom = fmod(KOE.truAnom,2*M_PI);
+    if (KOE.truAnom < 0){KOE.truAnom+=2*M_PI;}
 
-    e.rIJK                                          = vSquaredMinusMuOverRtimesRminusrDotVtimesV.rIJK.operator/(planet.sgp);
-    //std::cout << e.rIJK[0] << ",    " << e.rIJK[1] << ",    " << e.rIJK[2] << ",    " <<std::endl;
-    KOE.ecc = e.rIJK.mag();
-    KOE.sma = (pow2(normH) / planet.sgp) / (1 - pow2(KOE.ecc));
-    KOE.aop = acos((N.rIJK.dot(e.rIJK) / (normN * KOE.ecc)));
-    if (e.rIJK[2]<0){KOE.aop=2*M_PI-KOE.aop;}
-    else if (KOE.asc==0){
+    KOE.aop = ArgumentOfLatitude - KOE.truAnom;
+
+   
+    if (KOE.inc==0){
         KOE.aop=atan2(e.rIJK[1],e.rIJK[0]);
         if (h.rIJK[2]<0){
-        KOE.aop=2*M_PI-KOE.aop;
+            KOE.aop=2*M_PI-KOE.aop;
         }
-
     }
-    //std::cout<<KOE.aop<<std::endl;
 
-    if(e.rIJK.data[2] < 0) {
-        KOE.aop = 2 * M_PI - KOE.aop;
-    };
+    // KOE.inc = acos(h.rIJK.data[2] / normH);
+    // //orbit in retrograde if inc > pi
 
-    KOE.truAnom = acos((e.rIJK.dot(posvelECI.rIJK) / (r*KOE.ecc)));
+    // N.rIJK.data[0] = -h.rIJK.data[1];
+    // N.rIJK.data[1] = h.rIJK.data[0];
+    // N.rIJK.data[2] = 0;
+    // //std::cout << N.rIJK[0] << ",    " << N.rIJK[1] << ",    " << N.rIJK[2] << ",    " <<std::endl;
 
-    if(posvelECI.rIJK.dot(posvelECI.vIJK) < 0) {//dot product of position and velocity
-        KOE.truAnom = 2 * M_PI - KOE.truAnom;
-    };
+    // double normN = N.rIJK.mag();
+    // KOE.asc = acos(N.rIJK.data[0] / normN);
+    // //if Ny > 0 then 0<asc<180
+    // //if Ny < 0 then 180<asc<360
+    // if (N.rIJK.data[1] < 0) {
+    //     KOE.asc = 2 * M_PI - KOE.asc;
+    // };
+    // if (isnan(KOE.asc)){KOE.asc=0;}
+
+    // double vSquaredMinusMuOverR = (pow2(v) - (planet.sgp / r));
+    // eci vSquaredMinusMuOverRtimesR, rDotVtimesV, vSquaredMinusMuOverRtimesRminusrDotVtimesV; //fix this horror
+    // double rDotV;
+
+    // vSquaredMinusMuOverRtimesR.rIJK                 = posvelECI.rIJK.operator*(vSquaredMinusMuOverR);
+    // rDotV                                           = posvelECI.rIJK.dot(posvelECI.vIJK);
+    // rDotVtimesV.rIJK                                = posvelECI.vIJK.operator*(rDotV);
+    // vSquaredMinusMuOverRtimesRminusrDotVtimesV.rIJK = vSquaredMinusMuOverRtimesR.rIJK.operator-(rDotVtimesV.rIJK);
+
+    // e.rIJK                                          = vSquaredMinusMuOverRtimesRminusrDotVtimesV.rIJK.operator/(planet.sgp);
+    // //std::cout << e.rIJK[0] << ",    " << e.rIJK[1] << ",    " << e.rIJK[2] << ",    " <<std::endl;
+    // KOE.ecc = e.rIJK.mag();
+    // KOE.sma = (pow2(normH) / planet.sgp) / (1 - pow2(KOE.ecc));
+
+    // KOE.aop = acos((N.rIJK.dot(e.rIJK) / (normN * KOE.ecc)));
+    // if (e.rIJK[2]<0){
+    //     KOE.aop=2*M_PI-KOE.aop;
+    // }
+    // else if (KOE.asc==0){
+    //     KOE.aop=atan2(e.rIJK[1],e.rIJK[0]);
+    //     if (h.rIJK[2]<0){
+    //         KOE.aop=2*M_PI-KOE.aop;
+    //     }
+
+    // }
+    // //std::cout<<KOE.aop<<std::endl;
+
+    // if(e.rIJK.data[2] < 0) {
+    //     KOE.aop = 2 * M_PI - KOE.aop;
+    // };
+
+    // KOE.truAnom = acos((e.rIJK.dot(posvelECI.rIJK) / (r*KOE.ecc)));
+
+    // if(posvelECI.rIJK.dot(posvelECI.vIJK) < 0) {//dot product of position and velocity
+    //     KOE.truAnom = 2 * M_PI - KOE.truAnom;
+    // };
 
     return KOE;
 };
