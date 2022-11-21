@@ -1,5 +1,6 @@
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 
 #include "orbitalmechanics/axistransforms.hpp"
@@ -24,41 +25,48 @@ osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE) {
   return iKOE;
 }
 
-osc::vec3 InterceptCalcs(double deltaM, osc::orbParam KOE, double AAALRCT, double SatAlt, double dVv, double dVb, double h[]) {
+osc::vec3 InterceptCalcs(double deltaM, osc::orbParam KOE, double AAALRCT,
+                         double SatAlt, double dVv, double dVb, double h[]) {
   using namespace osc;
   double dTheta = KOE.meanToTrue(deltaM);
-  KOE.truAnom+=dTheta;
+  KOE.truAnom += dTheta;
   pcs PCSposvel = KOEtoPCS(KOE);
   // std::cout << PCSposvel.rPCS[0] << ",   " << PCSposvel.rPCS[1] << ",   " <<
   // PCSposvel.rPCS[2] << std::endl;
   eci ECIposvel = PCStoECI(KOE, PCSposvel);
-  KOE.truAnom-=dTheta;
+  KOE.truAnom -= dTheta;
   double CaSatInterceptTime = KOE.CompositeTrapezoid(dTheta);
   double CaSatAltAtTheta = ECIposvel.rIJK.mag() - EarthRadius;
   // std::cout << ECIposvel.rIJK[0] << ",    " << ECIposvel.rIJK[1] << ",    "
   //           << ECIposvel.rIJK[2] << ",    " << ECIposvel.rIJK.mag()
   //           << std::endl;
-  double ASAT_AltAtIntercept = h[int(round(((ReactionTime+CaSatInterceptTime)/ModelAccuracy)))]; // segfault because of this lol
-  if (abs(CaSatAltAtTheta-ASAT_AltAtIntercept)<10000){
-    if (CaSatAltAtTheta<AAALRCT+5000){
-      std::cout << "Successful Endoatmospheric Intercept at " << dVv << "m/s prograde, " << dVb << "m/s radial.\n"
-      << "Intercept Altitude: " << CaSatAltAtTheta<< "m\n\n";
-    }    
-    else if (ASAT_AltAtIntercept>100000 && ASAT_AltAtIntercept<(SatAlt-50000) && abs(CaSatAltAtTheta-ASAT_AltAtIntercept)<1000){
-      std::cout << "Successful Exoatmospheric Intercept at " << dVv << "m/s prograde, " << dVb << "m/s radial.\n"
-      << "Intercept Altitude: " << CaSatAltAtTheta<< "m\n\n";
+  double ASAT_AltAtIntercept =
+      h[int(round(((ReactionTime + CaSatInterceptTime) /
+                   ModelAccuracy)))]; // segfault because of this lol
+  if (abs(CaSatAltAtTheta - ASAT_AltAtIntercept) < 10000) {
+    if (CaSatAltAtTheta < AAALRCT + 5000) {
+      std::cout << "Successful Endoatmospheric Intercept at " << dVv
+                << "m/s prograde, " << dVb << "m/s radial.\n"
+                << "Intercept Altitude: " << CaSatAltAtTheta << "m\n\n";
+    } else if (ASAT_AltAtIntercept > 100000 &&
+               ASAT_AltAtIntercept < (SatAlt - 50000) &&
+               abs(CaSatAltAtTheta - ASAT_AltAtIntercept) < 1000) {
+      std::cout << "Successful Exoatmospheric Intercept at " << dVv
+                << "m/s prograde, " << dVb << "m/s radial.\n"
+                << "Intercept Altitude: " << CaSatAltAtTheta << "m\n\n";
     }
   }
   return {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept};
 }
 
-int main(int, char **) {
+int main() {
   using namespace std;
   ofstream outputFile;
   outputFile.open("AsatM_Out.csv", std::ofstream::trunc);
 
   using namespace osc;
-  double h[168000000]={0}; //needs to be able to handle the maximum (CaSatInterceptTime+ReactionTime)/ModelAccuracy
+
+  auto h = std::make_unique<std::array<double, 168000000>>();
   double V;
   double LRCT;
   double HRCT;
@@ -86,24 +94,26 @@ int main(int, char **) {
   // t=ModelAccuracy:ModelAccuracy:t_f;              //sets up matrix for all
   // times
   int i = 0;
+
   for (double t = 0; t < t_f; t += ModelAccuracy) {
 
     double p = 1 - ((Mo - mo * t) / Mo) * (log(Mo / (Mo - mo * t)) +
                                            1); // range function p(f) again
-    h[i] = ((g * pow2(Isp) / TWR) * p -
-                (0.5 * g * pow2(t))); // altitude as function of time
+    (*h)[i] = ((g * pow2(Isp) / TWR) * p -
+               (0.5 * g * pow2(t))); // altitude as function of time
     double V =
         g * (Isp * log(Mo / (Mo - mo * t)) + 1); // velocity as function of time
-    double h_c = h[i] + (pow2(V)) / (2 * g); // culmination alt as func of time
+    double h_c =
+        (*h)[i] + (pow2(V)) / (2 * g); // culmination alt as func of time
     if (h_c > 100000) {
       LRCT = t;
-      ASATAltAtLRCT = h[i];
+      ASATAltAtLRCT = (*h)[i];
     };
-    if (h[i] <= (SatKOE.sma - EarthRadius)) {
+    if ((*h)[i] <= (SatKOE.sma - EarthRadius)) {
       HRCT = t;
     };
 
-    outputFile << h << "," << V << "," << h_c << std::endl;
+    outputFile /* << h */ << "," << V << "," << h_c << std::endl;
     i++;
   }
   outputFile.close();
@@ -129,7 +139,9 @@ int main(int, char **) {
   for (double dVb = -350; dVb <= -50; dVb += 10) {
     for (double dVv = -1250; dVv <= -250; dVv += 10) {
       orbParam iKOE = Burn(dVv, 0, dVb, SatKOE);
-      vec3 InterceptOut = InterceptCalcs(deltaM, iKOE, ASATAltAtLRCT, SatKOE.sma - EarthRadius, dVv, dVb, h);
+      vec3 InterceptOut =
+          InterceptCalcs(deltaM, iKOE, ASATAltAtLRCT, SatKOE.sma - EarthRadius,
+                         dVv, dVb, h.get()->data());
       outputFile << dVv << "," << dVb << "," << sqrt(pow2(dVv) + pow2(dVb))
                  << "," << iKOE.sma << "," << iKOE.ecc << "," << iKOE.inc << ","
                  << iKOE.aop << "," << iKOE.asc << "," << iKOE.truAnom << ","
