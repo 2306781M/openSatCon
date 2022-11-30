@@ -5,6 +5,8 @@
 
 #include "orbitalmechanics/axistransforms.hpp"
 #include "osctypes.hpp"
+#include <gcem.hpp>
+#include <oneapi/tbb.h>
 
 osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE) {
   using namespace osc;
@@ -135,19 +137,51 @@ int main() {
   // }
   outputFile.close();
 
-  outputFile.open("CaSatM_Out.csv", std::ofstream::trunc);
-  for (double dVb = -350; dVb <= -50; dVb += 10) {
-    for (double dVv = -1250; dVv <= -250; dVv += 10) {
-      orbParam iKOE = Burn(dVv, 0, dVb, SatKOE);
-      vec3 InterceptOut =
-          InterceptCalcs(deltaM, iKOE, ASATAltAtLRCT, SatKOE.sma - EarthRadius,
-                         dVv, dVb, h.get()->data());
-      outputFile << dVv << "," << dVb << "," << sqrt(pow2(dVv) + pow2(dVb))
-                 << "," << iKOE.sma << "," << iKOE.ecc << "," << iKOE.inc << ","
-                 << iKOE.aop << "," << iKOE.asc << "," << iKOE.truAnom << ","
-                 << InterceptOut[0] << "," << InterceptOut[1] / 1000 << ","
-                 << InterceptOut[2] / 1000 << std::endl;
-    }
+  /**
+   * Simple Helper to linspace a vector
+   */
+  auto linspace = [](auto &vec, auto start, auto stop, size_t n_values) {
+    vec.reserve(n_values);
+    vec.resize(n_values);
+    using vec_value_t = std::remove_cvref_t<decltype(vec)>::value_type;
+    vec_value_t increment = static_cast<vec_value_t>((stop - start) / n_values);
+    std::generate(vec.begin(), vec.end(),
+                  [n = 0, &increment, &start]() mutable -> vec_value_t {
+                    return (n++ * increment) + start;
+                  });
   };
+
+  outputFile.open("CaSatM_Out.csv", std::ofstream::trunc);
+  outputFile.close();
+
+  auto do_calculation = [&](double dVb, double dVv) {
+    orbParam iKOE = Burn(dVv, 0, dVb, SatKOE);
+    vec3 InterceptOut =
+        InterceptCalcs(deltaM, iKOE, ASATAltAtLRCT, SatKOE.sma - EarthRadius,
+                       dVv, dVb, h.get()->data());
+    // outputFile << dVv << "," << dVb << "," << sqrt(pow2(dVv) + pow2(dVb)) <<
+    // ","
+    //            << iKOE.sma << "," << iKOE.ecc << "," << iKOE.inc << ","
+    //            << iKOE.aop << "," << iKOE.asc << "," << iKOE.truAnom << ","
+    //            << InterceptOut[0] << "," << InterceptOut[1] / 1000 << ","
+    //            << InterceptOut[2] / 1000 << std::endl;
+  };
+
+  std::vector<double> dVbs{};
+  std::vector<double> dVvs{};
+  // Adjust linspece values based on needs
+  linspace(dVbs, -350.0, -50.0, 1000);
+  linspace(dVvs, -1250, -250, 1000);
+  tbb::parallel_for(
+      tbb::blocked_range2d<double>(0, dVbs.size(), 0, dVbs.size()),
+      [&](const tbb::blocked_range2d<double> &range) {
+        for (int i = range.rows().begin(), i_end = range.rows().end();
+             i < i_end; ++i) {
+          for (int j = range.cols().begin(), j_end = range.cols().end();
+               j < j_end; ++j) {
+            do_calculation(dVbs[i], dVvs[i]);
+          }
+        }
+      });
   std::cout << std::endl << "complete" << std::endl;
 }

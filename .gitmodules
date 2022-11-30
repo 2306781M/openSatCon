@@ -4,3 +4,9 @@
 [submodule "includes/ICM-20948"]
 	path = includes/ICM-20948
 	url = https://github.com/drcpattison/ICM-20948
+[submodule "external/oneTBB"]
+	path = external/oneTBB
+	url = https://github.com/oneapi-src/oneTBB.git
+[submodule "external/gcem"]
+	path = external/gcem
+	url = https://github.com/kthohr/gcem.git
