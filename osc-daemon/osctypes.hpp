@@ -22,10 +22,10 @@ constexpr const int ReactionTime = 20;
 
 // Inline helper functions
 /// Inline function to square an argument
-constexpr double pow2(double arg) { return std::pow(arg, 2); }
+constexpr double pow2(double arg) { return gcem::pow(arg, 2); }
 
 /// Inline function to cube an argument
-constexpr double pow3(double arg) { return std::pow(arg, 3); }
+constexpr double pow3(double arg) { return gcem::pow(arg, 3); }
 
 constexpr double deg2rad(double arg) { return arg * M_PI / 180; }
 constexpr double rad2deg(double arg) { return arg / M_PI * 180; }
