@@ -231,9 +231,9 @@ int main() {
 
   using namespace osc;
 
-  auto h = std::make_unique<std::array<double, 168000>>();
-  auto V = std::make_unique<std::array<double, 168000>>();
-  auto r2 = std::make_unique<std::array<osc::vec3, 168000>>();
+  auto h = std::make_unique<std::array<double, int(t_f / ModelAccuracy)>>();
+  auto V = std::make_unique<std::array<double, int(t_f / ModelAccuracy)>>();
+  auto r2 = std::make_unique<std::array<osc::vec3, int(t_f / ModelAccuracy)>>();
   double LRCT;
   double HRCT;
   double deltaM;
@@ -270,7 +270,7 @@ int main() {
         g * (Isp * log(Mo / (Mo - mo * t)) + 1); // velocity as function of time
     double h_c =
         (*h)[i] + (pow2((*V)[i])) / (2 * g); // culmination alt as func of time
-    if (h_c < 100000) {
+    if (h_c < 250000) {
       LRCT = t;
       ASATAltAtLRCT = (*h)[i];
     };
@@ -318,6 +318,16 @@ int main() {
   std::cout << "\n"
             << "LAMBERT SOLUTIONS COMPLETE"
             << "\n";
+
+  double CaSatDeltaV = 6328.09; // 802.18
+  for (i = 0; i < 2; i++) {
+    double CaSatExVel = g * 275;
+    double CaSatDryMass = 1.5 * 1.1;
+    double CaSatFinalMass =
+        1.1 * (CaSatDryMass * exp(CaSatDeltaV / CaSatExVel));
+    std::cout << CaSatFinalMass << "kg\n";
+    CaSatDeltaV = 802.18;
+  }
   /**
    * Simple Helper to linspace a vector
    */
