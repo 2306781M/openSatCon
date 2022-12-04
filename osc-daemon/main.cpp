@@ -6,7 +6,157 @@
 #include "orbitalmechanics/axistransforms.hpp"
 #include "osctypes.hpp"
 #include <gcem.hpp>
+#include <mutex>
 #include <oneapi/tbb.h>
+#include <optional>
+#include <type_traits>
+
+osc::eci LambertsProblem(osc::vec3 r1, osc::vec3 r2, double t) {
+  using namespace osc;
+
+  vec3 c = r2 - r1;
+
+  vec3 t1Unit, t2Unit;
+  double r1Mag = r1.mag();
+  double r2Mag = r2.mag();
+  double cMag = c.mag();
+
+  double s = 0.5 * (r1Mag + r2Mag + cMag);
+  double x;
+  vec3 r1Unit = r1.unit();
+
+  vec3 r2Unit = r2.unit();
+
+  vec3 hUnit = r1Unit.cross(r2Unit).unit();
+  double lambda = sqrt(1.0 - cMag / s);
+
+  if ((hUnit[2]) < 0.0) {
+    lambda = -lambda;
+    t1Unit = r1Unit.cross(hUnit);
+    t2Unit = r2Unit.cross(r2Unit);
+  } else {
+    t1Unit = hUnit.cross(r1Unit);
+    t2Unit = hUnit.cross(r2Unit);
+  }
+  double lambda2 = pow2(lambda);
+  double lambda3 = pow3(lambda);
+
+  double T = sqrt(2.0 * mu / pow3(s)) * t;
+
+  double T0 = acos(lambda) + lambda * sqrt(1 - lambda2);
+
+  double T1 = (2.0 / 3.0) * (1.0 - lambda3);
+
+  if (T >= T0) {
+    x = pow(T0 / T, 2.0 / 3.0) - 1.0;
+  } else if (T < T1) {
+    x = 2.5 * ((T1 * (T1 - T)) / (T * (1.0 - lambda2 * lambda3))) + 1.0;
+  } else {
+    x = pow((T / T0), 0.69314718055994529 / log(T1 / T0)) - 1.0;
+  }
+  int i = 0;
+  int iMax = 15; // idk what to put
+  double err = 1.0;
+  double eps = 1e-5;
+  double xn = 0.0;
+  double tof = 0.0, delta = 0.0, deriv1 = 0.0, deriv2 = 0.0, deriv3 = 0.0;
+  while ((err > eps) && (i < iMax)) {
+
+    double battin = 0.01;
+    double lagrange = 0.2;
+    double distance = abs(x - 1.0);
+    if (distance < lagrange && distance > battin) {
+      double a = 1.0 / (1.0 - pow2(x));
+      if (a > 0.0) {
+        double alpha = 2.0 * acos(x);
+        double beta = 2.0 * asin(sqrt(lambda2 / a));
+        if (lambda < 0.0) {
+          beta = -beta;
+        }
+        tof =
+            ((a * sqrt(a) * ((alpha - sin(alpha)) - (beta - sin(beta)))) / 2.0);
+      } else {
+        double alpha = 2.0 * acosh(x);
+        double beta = 2.0 * asinh(sqrt(-lambda * lambda / a));
+        if (lambda < 0.0) {
+          beta = -beta;
+        }
+        tof = ((-a * sqrt(-a) * ((beta - sinh(beta)) - (alpha - sinh(alpha)))) /
+               2.0);
+      }
+    }
+    double E = pow2(x) - 1.0;
+    double rho = abs(E);
+    double z = sqrt(1.0 + lambda2 * E);
+    if (distance < battin) {
+      double eta = z - lambda * x;
+      double S1 = 0.5 * (1.0 - lambda - x * eta);
+      double Sj = 1.0;
+      double Cj = 1.0;
+      double err = 1.0;
+      double Cj1 = 0.0;
+      double Sj1 = 0.0;
+      int j = 0;
+      while (err > 1e-11) {
+        Cj1 = Cj * (3.0 + j) * (1.0 + j) / (2.5 + j) * S1 / (j + 1.0);
+        Sj1 = Sj + Cj1;
+        err = abs(Cj1);
+        Sj = Sj1;
+        Cj = Cj1;
+        j++;
+      }
+      double Q = 4.0 / 3.0 * Sj;
+      tof = (pow3(eta) * Q + 4.0 * lambda * eta) / 2.0;
+    } else {
+      double y = sqrt(rho);
+      double g = x * z - lambda * E;
+      double d = 0.0;
+      if (E < 0.0) {
+        d = acos(g);
+      } else {
+        double f = y * (z - lambda * x);
+        d = log(f + g);
+      }
+      tof = (x - lambda * z - d / y) / E;
+    }
+
+    double umx2 = 1.0 - pow2(x);
+    double invumx2 = 1.0 / umx2;
+    double y = sqrt(1 - lambda2 * umx2);
+    double y2 = pow2(y);
+    double y3 = pow3(y);
+    double deriv1 = invumx2 * (3.0 * T * x - 2.0 + 2.0 * lambda3 * x / y);
+    double deriv2 = invumx2 * (3.0 * T + 5.0 * x * deriv1 +
+                               2.0 * (1.0 - lambda2) * lambda3 / y3);
+    double deriv3 =
+        invumx2 * (7.0 * x * deriv2 + 8.0 * deriv1 -
+                   6.0 * (1.0 - lambda2) * lambda2 * lambda3 * x / y3 / y2);
+    delta = tof - T;
+    double deriv12 = pow2(deriv1);
+    xn = x - delta * (deriv12 - delta * deriv2 / 2.0) /
+                 (deriv1 * (deriv12 - delta * deriv2) +
+                  deriv3 * delta * delta / 6.0);
+    err = abs(x - xn);
+    x = xn;
+    i++;
+  }
+
+  double gamma = sqrt(0.5 * mu * s);
+  double rho = (r1Mag - r2Mag) / cMag;
+  double sigma = sqrt(1.0 - pow2(rho));
+
+  double y = sqrt(1.0 - lambda2 + lambda2 * pow2(x));
+  double Vr1 = gamma * ((lambda * y - x) - rho * (lambda * y + 1.0)) / r1Mag;
+  double Vr2 = -gamma * ((lambda * y - x) + rho * (lambda * y + 1.0)) / r2Mag;
+  double Vt1 = gamma * sigma * (y + lambda * x) / r1Mag;
+  double Vt2 = gamma * sigma * (y + lambda * x) / r2Mag;
+  vec3 v1 = r1Unit * Vr1 + t1Unit * Vt1;
+  vec3 v2 = r2Unit * Vr2 + t2Unit * Vt2;
+
+  eci eciOut{r1, v1};
+
+  return (eciOut);
+}
 
 osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE) {
   using namespace osc;
@@ -18,8 +168,7 @@ osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE) {
   pcs PCSposvel = KOEtoPCS(KOE);
   eci ECIposvel = PCStoECI(KOE, PCSposvel);
   eci ECIdV = VNBtoECI(ECIposvel, dV);
-  // std::cout << dV.vVNB[0] << ",    "<< dV.vVNB[1] << ",    "<< dV.vVNB[2] <<
-  // ",    "<<std::endl;
+
   eci iECI;
   iECI.rIJK = ECIposvel.rIJK;
   iECI.vIJK = ECIposvel.vIJK.operator+(ECIdV.vIJK);
@@ -27,8 +176,9 @@ osc::orbParam Burn(double v, double n, double b, osc::orbParam KOE) {
   return iKOE;
 }
 
-osc::vec3 InterceptCalcs(double deltaM, osc::orbParam KOE, double AAALRCT, double HRCT,
-                         double SatAlt, double dVv, double dVb, double h[]) {
+std::optional<osc::InterceptOut>
+InterceptCalcs(double deltaM, osc::orbParam KOE, double AAALRCT, double HRCT,
+               double SatAlt, double dVv, double dVb, double h[]) {
   using namespace osc;
   double dTheta = KOE.meanToTrue(deltaM);
   double CaSatInterceptTime;
@@ -40,25 +190,38 @@ osc::vec3 InterceptCalcs(double deltaM, osc::orbParam KOE, double AAALRCT, doubl
   eci ECIposvel = PCStoECI(KOE, PCSposvel);
   KOE.truAnom -= dTheta;
   CaSatInterceptTime = KOE.CompositeTrapezoid(dTheta);
-  if (CaSatInterceptTime+ReactionTime<HRCT){
+  if (CaSatInterceptTime + ReactionTime < HRCT) {
     double CaSatAltAtTheta = ECIposvel.rIJK.mag() - EarthRadius;
-  ASAT_AltAtIntercept = h[int(round(((ReactionTime + CaSatInterceptTime) / ModelAccuracy)))]; 
-  if (abs(CaSatAltAtTheta - ASAT_AltAtIntercept) < 10000) {
-    if (CaSatAltAtTheta < AAALRCT + 5000) {
-      //std::cout << "Successful Endoatmospheric Intercept at " << dVv
-                //<< "m/s prograde, " << dVb << "m/s radial.\n"
-                //<< "Intercept Altitude: " << CaSatAltAtTheta << "m\n\n";
-    } else if (ASAT_AltAtIntercept > 100000 &&
-               ASAT_AltAtIntercept < (SatAlt - 50000) &&
-               abs(CaSatAltAtTheta - ASAT_AltAtIntercept) < 1000) {
-      //std::cout << "Successful Exoatmospheric Intercept at " << dVv
-                //<< "m/s prograde, " << dVb << "m/s radial.\n"
-                //<< "Intercept Altitude: " << CaSatAltAtTheta << "m\n\n";
+    ASAT_AltAtIntercept =
+        h[int(round(((ReactionTime + CaSatInterceptTime) / ModelAccuracy)))];
+    if (abs(CaSatAltAtTheta - ASAT_AltAtIntercept) < 10000) {
+      if (CaSatAltAtTheta < AAALRCT + 5000) {
+        InterceptOut EndoAtmoIntercept{
+            dVv,
+            dVb,
+            sqrt(pow2(dVv) + pow2(dVb)),
+            KOE,
+            {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept}};
+        return EndoAtmoIntercept;
+      } else if (ASAT_AltAtIntercept > 100000 &&
+                 ASAT_AltAtIntercept < (SatAlt - 50000) &&
+                 abs(CaSatAltAtTheta - ASAT_AltAtIntercept) < 1000) {
+        InterceptOut ExoAtmoIntercept{
+            dVv,
+            dVb,
+            sqrt(pow2(dVv) + pow2(dVb)),
+            KOE,
+            {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept}};
+        return ExoAtmoIntercept;
+        // std::cout << "Successful Exoatmospheric Intercept at " << dVv
+        //<< "m/s prograde, " << dVb << "m/s radial.\n"
+        //<< "Intercept Altitude: " << CaSatAltAtTheta << "m\n\n";
+      }
     }
   }
-  }
-  else {CaSatAltAtTheta = 9e10; ASAT_AltAtIntercept = 9e10;}
-  return {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept};
+  // else {CaSatAltAtTheta = 9e10; ASAT_AltAtIntercept = 9e10;}
+  // return {CaSatInterceptTime, CaSatAltAtTheta, ASAT_AltAtIntercept};
+  return std::nullopt;
 }
 
 int main() {
@@ -68,12 +231,13 @@ int main() {
 
   using namespace osc;
 
-  auto h = std::make_unique<std::array<double, 168000000>>();
-  double V=0;
+  auto h = std::make_unique<std::array<double, 168000>>();
+  auto V = std::make_unique<std::array<double, 168000>>();
+  auto r2 = std::make_unique<std::array<osc::vec3, 168000>>();
   double LRCT;
   double HRCT;
   double deltaM;
-  double ASATAltAtLRCT=0;
+  double ASATAltAtLRCT = 0;
   struct orbParam SatKOE = {250000 + EarthRadius, 0, 0, 0, 0, 0};
   struct orbParam CaSatKOE = {250000 + EarthRadius, 0, 0, 0, 0, 0};
 
@@ -102,10 +266,10 @@ int main() {
                                            1); // range function p(f) again
     (*h)[i] = ((g * pow2(Isp) / TWR) * p -
                (0.5 * g * pow2(t))); // altitude as function of time
-    V =
+    (*V)[i] =
         g * (Isp * log(Mo / (Mo - mo * t)) + 1); // velocity as function of time
     double h_c =
-        (*h)[i] + (pow2(V)) / (2 * g); // culmination alt as func of time
+        (*h)[i] + (pow2((*V)[i])) / (2 * g); // culmination alt as func of time
     if (h_c < 100000) {
       LRCT = t;
       ASATAltAtLRCT = (*h)[i];
@@ -114,7 +278,7 @@ int main() {
       HRCT = t;
     };
 
-    outputFile << (*h)[i]  << "," << V << "," << h_c << std::endl;
+    outputFile << (*h)[i] << "," << (*V)[i] << "," << h_c << "\n";
     i++;
   }
   outputFile.close();
@@ -122,27 +286,48 @@ int main() {
   outputFile.open("CaSatMposVel_Out.csv", std::ofstream::trunc);
   deltaM = (HRCT - ReactionTime) * SatKOE.MeanOrbitalMotion();
   double deltaE = SatKOE.meanToTrue(deltaM);
-  // for (int i=0; i<0; i++){
-  //     lla LLApos = {0, deltaE, h};
-  //     ecef asatECEF = LLAtoECEF(LLApos);
-  //     //std::cout << LLApos.lat << "  ,   " << LLApos.lon << "  ,   " <<
-  //     LLApos.alt << std::endl;
-  //     //std::cout << asatECEF.rXYZ[0] << "  ,   " << asatECEF.rXYZ[1] << "  ,
-  //     " << asatECEF.rXYZ[2] << std::endl << std::endl; asatECEF.vXYZ =
-  //     {V*cos(deltaE), V*sin(deltaE), 0}; outputFile << asatECEF.rXYZ[0] <<
-  //     "," << asatECEF.rXYZ[1] << "," << asatECEF.rXYZ[2] << "," <<
-  //     asatECEF.vXYZ[0] << "," << asatECEF.vXYZ[1] << "," << asatECEF.vXYZ[2]
-  //     << std::endl;
-  // }
+  for (int i = 0; i < 168000; i++) {
+    lla LLApos = {0, deltaE, (*h)[i]};
+    ecef asatECEF = LLAtoECEF(LLApos);
+    (*r2)[i] = asatECEF.rXYZ;
+
+    asatECEF.vXYZ = {(*V)[i] * cos(deltaE), (*V)[i] * sin(deltaE), 0};
+    outputFile << asatECEF.rXYZ[0] << "," << asatECEF.rXYZ[1] << ","
+               << asatECEF.rXYZ[2] << "," << asatECEF.vXYZ[0] << ","
+               << asatECEF.vXYZ[1] << "," << asatECEF.vXYZ[2] << "\n";
+  }
   outputFile.close();
 
+  /*alternative main
+  pcs PCSposvel = KOEtoPCS(SatKOE);
+  eci ECIposvel = PCStoECI(SatKOE, PCSposvel);
+
+  */
+  pcs PCSposvel = KOEtoPCS(SatKOE);
+  eci ECIposvel = PCStoECI(SatKOE, PCSposvel);
+
+  outputFile.open("LambertSolutions.csv", std::ofstream::trunc);
+  for (int i = ReactionTime / ModelAccuracy; i < HRCT / ModelAccuracy; i++) {
+    double InterceptTime = i * ModelAccuracy - ReactionTime;
+    eci outECI = LambertsProblem(ECIposvel.rIJK, (*r2)[i], InterceptTime);
+    vec3 deltaV = outECI.vIJK - ECIposvel.vIJK;
+    outputFile << (*h)[i] << "," << InterceptTime << "," << deltaV[0] << ","
+               << deltaV[1] << "," << deltaV[2] << "," << deltaV.mag() << "\n";
+  }
+  outputFile.close();
+  std::cout << "\n"
+            << "LAMBERT SOLUTIONS COMPLETE"
+            << "\n";
   /**
    * Simple Helper to linspace a vector
    */
+  std::mutex output_mut;
+  std::vector<osc::InterceptOut> output;
   auto linspace = [](auto &vec, auto start, auto stop, size_t n_values) {
     vec.reserve(n_values);
     vec.resize(n_values);
-    using vec_value_t = std::remove_cvref_t<decltype(vec)>::value_type;
+    using vec_value_t =
+        std::remove_reference_t<std::remove_cv_t<decltype(vec)>>::value_type;
     vec_value_t increment = static_cast<vec_value_t>((stop - start) / n_values);
     std::generate(vec.begin(), vec.end(),
                   [n = 0, &increment, &start]() mutable -> vec_value_t {
@@ -153,11 +338,18 @@ int main() {
   outputFile.open("CaSatM_Out.csv", std::ofstream::trunc);
   outputFile.close();
 
-  auto do_calculation = [&](double dVb, double dVv) {
+  auto DoCalculation = [&](double dVb, double dVv) -> void {
     orbParam iKOE = Burn(dVv, 0, dVb, SatKOE);
-    vec3 InterceptOut =
-        InterceptCalcs(deltaM, iKOE, ASATAltAtLRCT, HRCT, SatKOE.sma - EarthRadius,
-                       dVv, dVb, h.get()->data());
+    auto InterceptOut =
+        InterceptCalcs(deltaM, iKOE, ASATAltAtLRCT, HRCT,
+                       SatKOE.sma - EarthRadius, dVv, dVb, h.get()->data());
+    if (!InterceptOut.has_value()) {
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> guard(output_mut);
+      output.push_back(InterceptOut.value());
+    }
     // outputFile << dVv << "," << dVb << "," << sqrt(pow2(dVv) + pow2(dVb)) <<
     // ","
     //            << iKOE.sma << "," << iKOE.ecc << "," << iKOE.inc << ","
@@ -169,8 +361,8 @@ int main() {
   std::vector<double> dVbs{};
   std::vector<double> dVvs{};
   // Adjust linspece values based on needs
-  linspace(dVbs, -5000.0, 5000.0, 1000);
-  linspace(dVvs, -5000.0, 5000.0, 1000);
+  linspace(dVbs, -5000.0, 5000.0, 100);
+  linspace(dVvs, -5000.0, 5000.0, 100);
   tbb::parallel_for(
       tbb::blocked_range2d<double>(0, dVbs.size(), 0, dVbs.size()),
       [&](const tbb::blocked_range2d<double> &range) {
@@ -178,9 +370,11 @@ int main() {
              i < i_end; ++i) {
           for (int j = range.cols().begin(), j_end = range.cols().end();
                j < j_end; ++j) {
-            do_calculation(dVbs[i], dVvs[i]);
+            DoCalculation(dVbs[i], dVvs[i]);
           }
         }
       });
-  std::cout << "\n\n" << "COMPLETE" << "\n\n";
+  std::cout << "\n\n"
+            << "COMPLETE"
+            << "\n\n";
 }

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cassert>
+#include <gcem.hpp>
 #include <math.h>
 #include <vector>
 
@@ -107,7 +108,7 @@ struct vec3 {
   @param[out] double
   calculates the magnitude of the vec3
   */
-  constexpr double mag() const noexcept { return sqrt(dot(*this)); }
+  constexpr double mag() const noexcept { return gcem::sqrt(dot(*this)); }
   /** \fn unit()
   @param[out] vec3
   calculates the unit vector of the vec3
@@ -219,15 +220,15 @@ struct quaternion {
   /// initialises a quaternion of an equivalent vector and angle
 
   constexpr quaternion(const vec3 &axis, double angle) noexcept {
-    qw = cos(angle * 0.5);
-    qx = sin(angle * 0.5) * axis[0];
-    qy = sin(angle * 0.5) * axis[1];
-    qz = sin(angle * 0.5) * axis[2];
+    qw = gcem::cos(angle * 0.5);
+    qx = gcem::sin(angle * 0.5) * axis[0];
+    qy = gcem::sin(angle * 0.5) * axis[1];
+    qz = gcem::sin(angle * 0.5) * axis[2];
   }
   /// initialises a quaternion of the rotation between two vectors
   constexpr quaternion(const vec3 &arg1, const vec3 &arg2) noexcept {
     vec3 cross = arg1.cross(arg2);
-    qw = sqrt(arg1.mag() * arg2.mag()) + arg1.dot(arg2);
+    qw = gcem::sqrt(arg1.mag() * arg2.mag()) + arg1.dot(arg2);
     qx = cross[0];
     qy = cross[1];
     qz = cross[2];
@@ -288,7 +289,7 @@ struct quaternion {
     quaternion dotQuat;
 
     argQuat.qw =
-        sqrt(1 - pow2(argQuat.qx) - pow2(argQuat.qy) - pow2(argQuat.qz));
+        gcem::sqrt(1 - pow2(argQuat.qx) - pow2(argQuat.qy) - pow2(argQuat.qz));
 
     dotQuat.qx = 0.5 * (argQuat.qw * argRate[0] - argQuat.qz * argRate[1] +
                         argQuat.qy * argRate[2]);
@@ -399,8 +400,8 @@ struct ftModel {
 
   // Member functions
   constexpr double mag() const noexcept {
-    return sqrt(pow2(ftVec[0]) + pow2(ftVec[1]) + pow2(ftVec[2]) +
-                pow2(ftVec[3]) + pow2(ftVec[4]) + pow2(ftVec[5]));
+    return gcem::sqrt(pow2(ftVec[0]) + pow2(ftVec[1]) + pow2(ftVec[2]) +
+                      pow2(ftVec[3]) + pow2(ftVec[4]) + pow2(ftVec[5]));
   }
   /** \fn normalise()
   normalises the ftModel*/
@@ -471,25 +472,30 @@ struct orbParam {
   @param[in] meanAnomaly input mean anomaly
   Converts mean anomaly to true anomaly
   */
-  double meanToTrue(double meanAnomaly){
+  double meanToTrue(double meanAnomaly) {
     // converts mean anomaly to true anomaly, used for calculating positions at
     // different times
     double dTheta = 0;
     if (ecc < 1.0) { // newton raphson's method must be used for higher
-                          // eccentricities, e>1 is a parabolic orbit
+                     // eccentricities, e>1 is a parabolic orbit
 
-      double Beta = ecc/(1+sqrt(1+pow2(ecc)));
-      double EccAnomaly = meanAnomaly + ((ecc * sin(meanAnomaly)) / ((cos(ecc) - ((M_PI_2 - ecc) * sin(ecc))) + meanAnomaly * sin(ecc)));
+      double Beta = ecc / (1 + sqrt(1 + pow2(ecc)));
+      double EccAnomaly =
+          meanAnomaly + ((ecc * gcem::sin(meanAnomaly)) /
+                         ((cos(ecc) - ((M_PI_2 - ecc) * gcem::sin(ecc))) +
+                          meanAnomaly * gcem::sin(ecc)));
       double dE = 10e10;
 
       while (abs(dE) > 10e-10) {
-        dE = (EccAnomaly - ecc * sin(EccAnomaly) - meanAnomaly) / (1 - ecc * cos(EccAnomaly));
+        dE = (EccAnomaly - ecc * gcem::sin(EccAnomaly) - meanAnomaly) /
+             (1 - ecc * gcem::cos(EccAnomaly));
         EccAnomaly -= dE;
       };
 
-      dTheta = atan2(sqrt(1-pow2(ecc))*sin(EccAnomaly), cos(EccAnomaly)-ecc);
+      dTheta = gcem::atan2(sqrt(1 - pow2(ecc)) * sin(EccAnomaly),
+                           gcem::cos(EccAnomaly) - ecc);
     };
-    
+
     return dTheta;
   };
 
@@ -498,21 +504,22 @@ struct orbParam {
   */
   constexpr double trueToMean(double deltaT) noexcept {
     double meanAnomaly = 0;
-    double a = sqrt(1 - pow2(ecc)) * sin(deltaT);
-    double b = 1 + ecc * cos(deltaT);
+    double a = gcem::sqrt(1 - pow2(ecc)) * gcem::sin(deltaT);
+    double b = 1 + ecc * gcem::cos(deltaT);
 
-    meanAnomaly = atan2((a / b), ((ecc + cos(deltaT)) / b)) - ecc * (a / b);
+    meanAnomaly =
+        gcem::atan2((a / b), ((ecc + gcem::cos(deltaT)) / b)) - ecc * (a / b);
 
     return meanAnomaly;
   };
 
-  double MeanOrbitalMotion(){
-    return sqrt(mu / pow3(sma)); // unfuck this later when you learn how to code
-                                 // not like an ape
+  double MeanOrbitalMotion() {
+    return gcem::sqrt(mu / pow3(sma)); // unfuck this later when you learn how
+                                       // to code not like an ape
   }
 
-  double ArcTimeCalc(double Theta){
-     return (1 / pow2(1 + ecc * cos(Theta)));
+  double ArcTimeCalc(double Theta) {
+    return (1 / pow2(1 + ecc * gcem::cos(Theta)));
   }
 
   // constexpr double RK4(double dTheta, double stepSize) noexcept {
@@ -532,28 +539,28 @@ struct orbParam {
   //   return yn;
   // }
 
-  double CompositeTrapezoid(double dTheta){//fucked somehow idk
+  double CompositeTrapezoid(double dTheta) { // fucked somehow idk
     double ArcTime;
-    double n = 10000; //subinterval count
-    double h = dTheta/n;
-    double f_a = ArcTimeCalc(truAnom)/2;
-    double f_b = ArcTimeCalc(truAnom+dTheta)/2;
-    double f_k=0;
-    for (int k=1; k<n; k++){
-      f_k+=ArcTimeCalc(truAnom+k*h);
+    double n = 10000; // subinterval count
+    double h = dTheta / n;
+    double f_a = ArcTimeCalc(truAnom) / 2;
+    double f_b = ArcTimeCalc(truAnom + dTheta) / 2;
+    double f_k = 0;
+    for (int k = 1; k < n; k++) {
+      f_k += ArcTimeCalc(truAnom + k * h);
     }
 
-    ArcTime = h * (f_a + f_k + f_b)/(pow2(mu)/pow3(AngularMomentum()));
+    ArcTime = h * (f_a + f_k + f_b) / (pow2(mu) / pow3(AngularMomentum()));
     return ArcTime;
   }
 
-  double AngularMomentum(){
-    double h = sqrt(mu*sma*(1-pow2(ecc)));
+  double AngularMomentum() {
+    double h = gcem::sqrt(mu * sma * (1 - pow2(ecc)));
     return h;
   }
 
   constexpr double KeplersEqn(double dMean) const noexcept {
-    return dMean / sqrt(mu / pow3(sma));
+    return dMean / gcem::sqrt(mu / pow3(sma));
   }
 };
 
@@ -700,6 +707,14 @@ struct powermodel {
   double use = 0;
   /// @param max maxmium power consuption of component
   double max = 0;
+};
+
+struct InterceptOut {
+  double dVv;
+  double dVb;
+  double magDv;
+  orbParam KOEout;
+  vec3 InterceptCalcOut;
 };
 } // namespace osc
 

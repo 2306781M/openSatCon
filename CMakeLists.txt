@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.18)
 project("osc-daemon")
 
 set(CMAKE_CXX_STANDARD 20)
+# set(CMAKE_CXX_COMPILER /usr/bin/x86_64-w64-mingw32-g++)
 
 find_package(Threads REQUIRED)
 
